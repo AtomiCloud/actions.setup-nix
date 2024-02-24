@@ -1,3 +1,15 @@
+## [1.1.0](https://github.com/AtomiCloud/action.setup-nix/compare/v1.0.0...v1.1.0) (2024-02-24)
+
+
+### ✨ Features ✨
+
+* initial commit ([7313ab1](https://github.com/AtomiCloud/action.setup-nix/commit/7313ab18bc62ebd1e86080afbcfbc0e5238f9c03))
+
+
+### 📝 Documentation Updates 📝
+
+* improve docs for readme ([956b622](https://github.com/AtomiCloud/action.setup-nix/commit/956b622d96e77e77e1d05e1568bd9395ae7efb2a))
+
 ## 1.0.0 (2024-02-24)
 
 
