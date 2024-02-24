@@ -1,3 +1,17 @@
+## [1.2.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v1.1.0...v1.2.0) (2024-02-24)
+
+
+### 🐛 Bug Fixes 🐛
+
+* incorrect actions ([13bc595](https://github.com/AtomiCloud/actions.setup-nix/commit/13bc5957056a78d3529c3558e5add5a9c9d654da))
+* incorrect actions ([82fa615](https://github.com/AtomiCloud/actions.setup-nix/commit/82fa6158e112bbbfd85ae7e073f217adc14cb3da))
+* incorrect actions ([8c2bca8](https://github.com/AtomiCloud/actions.setup-nix/commit/8c2bca8a8dbbad7255cdf1e119a8c4da1b64728e))
+
+
+### ✨ Features ✨
+
+* use different cache key for releaser ([1f33900](https://github.com/AtomiCloud/actions.setup-nix/commit/1f33900f4e7d7e836d6cbef206653df476d23725))
+
 ## [1.1.0](https://github.com/AtomiCloud/action.setup-nix/compare/v1.0.0...v1.1.0) (2024-02-24)
 
 
