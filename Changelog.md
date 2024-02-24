@@ -1,3 +1,10 @@
+## 1.0.0 (2024-02-24)
+
+
+### ✨ Features ✨
+
+* initial commit ([68d440a](https://github.com/AtomiCloud/action.setup-nix/commit/68d440a15f147cd4fbe13be5a60cdd0ec3b1c93d))
+
 ## [1.2.0](https://github.com/AtomiCloud/atomici-ns-action/compare/v1.1.0...v1.2.0) (2024-02-24)
 
 
