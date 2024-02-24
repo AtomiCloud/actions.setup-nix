@@ -1,0 +1,44 @@
+name: Setup AtomiCloud CI Nix
+description: "Setup AtomiCloud CI Nix (Compatible with Namespace)"
+inputs:
+  namespacelabs:
+    default: "true"
+    description: "Using Namespace Lab's runners"
+  checkout:
+    default: "true"
+    description: "Whether to checkout the repository"
+branding:
+  color: blue
+  icon: settings
+runs:
+  using: "composite"
+  steps:
+    # NAMESPACE LAB VERSION
+    - name: Checkout Repository
+      uses: namespacelabs/nscloud-checkout-action@v2
+      if: inputs.namespacelabs == 'true' && inputs.checkout == 'true'
+    - name: Setup Nix Folder
+      shell: bash
+      if: inputs.namespacelabs == 'true'
+      run: |
+        sudo mkdir /nix
+        sudo chown $USER /nix
+    - name: Cache Nix
+      uses: namespacelabs/nscloud-cache-action@v1
+      if: inputs.namespacelabs == 'true'
+      with:
+        path: /nix
+    - name: Install Nix
+      if: inputs.namespacelabs == 'true'
+      uses: cachix/install-nix-action@v22
+
+    # NATIVE VERSION
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      if: inputs.namespacelabs == 'false' && inputs.checkout == 'true'
+    - name: Install Nix
+      uses: DeterminateSystems/nix-installer-action@main
+      if: inputs.namespacelabs == 'false'
+    - name: Cache Nix
+      uses: DeterminateSystems/magic-nix-cache-action@main
+      if: inputs.namespacelabs == 'false'

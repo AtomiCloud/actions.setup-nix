@@ -1,0 +1,19 @@
+name: "Continous Integration"
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+jobs:
+  precommit:
+    name: Pre-Commit
+    runs-on:
+      - nscloud-ubuntu-22.04-amd64-4x8-with-cache
+      - nscloud-cache-size-50gb
+      - nscloud-cache-tag-action-nix-store-cache
+      - nscloud-git-mirror-1gb
+    steps:
+      - uses: AtomiCloud/atomici-ns-action@v1.2.0
+
+      - name: Run Pre-commit checks
+        run: nix develop .#ci -c scripts/ci/pre-commit.sh
