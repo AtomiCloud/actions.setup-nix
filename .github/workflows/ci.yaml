@@ -13,7 +13,7 @@ jobs:
       - nscloud-cache-tag-action-nix-store-cache
       - nscloud-git-mirror-1gb
     steps:
-      - uses: AtomiCloud/atomici-ns-action@v1.2.0
+      - uses: AtomiCloud/setup-nix@v1.1.0
 
       - name: Run Pre-commit checks
         run: nix develop .#ci -c scripts/ci/pre-commit.sh

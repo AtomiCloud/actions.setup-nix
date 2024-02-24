@@ -9,10 +9,10 @@ jobs:
     runs-on:
       - nscloud-ubuntu-22.04-amd64-4x8-with-cache
       - nscloud-cache-size-50gb
-      - nscloud-cache-tag-action-nix-store-cache
+      - nscloud-cache-tag-releaser-nix-store-cache
       - nscloud-git-mirror-1gb
     steps:
-      - uses: AtomiCloud/atomici-ns-action@v1.2.0
+      - uses: AtomiCloud/setup-nix@v1.1.0
 
       - name: Release
         env:
