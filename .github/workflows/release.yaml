@@ -12,7 +12,8 @@ jobs:
       - nscloud-cache-tag-releaser-nix-store-cache
       - nscloud-git-mirror-1gb
     steps:
-      - uses: AtomiCloud/setup-nix@v1.1.0
+      - uses: AtomiCloud/actions.setup-nix@v1.1.0
+      - uses: AtomiCloud/actions.cache-npm@v1.0.0
 
       - name: Release
         env:
