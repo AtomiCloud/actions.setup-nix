@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/AtomiCloud/actions.setup-nix/compare/v1.2.0...v1.2.1) (2024-02-24)
+
+
+### 🐛 Bug Fixes 🐛
+
+* force bump ([c34aa3d](https://github.com/AtomiCloud/actions.setup-nix/commit/c34aa3da3e39bf08b909577b68a06ac294f8e5d5))
+
 ## [1.2.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v1.1.0...v1.2.0) (2024-02-24)
 
 
