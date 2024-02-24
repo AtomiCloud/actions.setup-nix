@@ -13,6 +13,7 @@ with packages;
     gitlint
     shellcheck
     sg
+    action_docs
   ];
 
   releaser = [

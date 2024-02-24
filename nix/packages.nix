@@ -6,6 +6,7 @@ let
       {
         inherit
           infisical
+          action_docs
           pls
           sg;
       }

@@ -17,6 +17,16 @@ pre-commit-lib.run {
       enable = false;
     };
 
+    a-action-docs = {
+      enable = true;
+      name = "Action Docs";
+      description = "Generate action documentation";
+      entry = "${packages.action_docs}/bin/action-docs --no-banner -u";
+      language = "system";
+      pass_filenames = false;
+      files = "^.*action\\.(yaml|yml)$";
+    };
+
     a-config-sync = {
       enable = true;
       name = "Sync configurations to helm charts";
