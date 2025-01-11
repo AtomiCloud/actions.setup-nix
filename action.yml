@@ -15,7 +15,7 @@ runs:
   steps:
     # NAMESPACE LAB VERSION
     - name: Checkout Repository
-      uses: namespacelabs/nscloud-checkout-action@v2
+      uses: namespacelabs/nscloud-checkout-action@v5.0.3
       if: inputs.namespacelabs == 'true' && inputs.checkout == 'true'
     - name: Setup Nix Folder
       shell: bash
@@ -24,17 +24,17 @@ runs:
         sudo mkdir /nix
         sudo chown $USER /nix
     - name: Cache Nix
-      uses: namespacelabs/nscloud-cache-action@v1
+      uses: namespacelabs/nscloud-cache-action@v1.2.1
       if: inputs.namespacelabs == 'true'
       with:
         path: /nix
     - name: Install Nix
       if: inputs.namespacelabs == 'true'
-      uses: cachix/install-nix-action@v22
+      uses: cachix/install-nix-action@v30
 
     # NATIVE VERSION
     - name: Checkout Repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v4.2.2
       if: inputs.namespacelabs == 'false' && inputs.checkout == 'true'
     - name: Install Nix
       uses: DeterminateSystems/nix-installer-action@main
