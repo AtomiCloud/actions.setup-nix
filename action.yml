@@ -7,15 +7,22 @@ inputs:
   checkout:
     default: "true"
     description: "Whether to checkout the repository"
+  short-length:
+    default: 7
+    description: length for short values
 branding:
   color: blue
   icon: settings
 runs:
   using: "composite"
   steps:
+    - name: Inject enhanced GitHub environment variables
+      uses: rlespinasse/github-slug-action@v5.x
+      with:
+        short-length: 7
     # NAMESPACE LAB VERSION
     - name: Checkout Repository
-      uses: namespacelabs/nscloud-checkout-action@v5.0.3
+      uses: namespacelabs/nscloud-checkout-action@v5
       if: inputs.namespacelabs == 'true' && inputs.checkout == 'true'
     - name: Setup Nix Folder
       shell: bash
@@ -24,7 +31,7 @@ runs:
         sudo mkdir /nix
         sudo chown $USER /nix
     - name: Cache Nix
-      uses: namespacelabs/nscloud-cache-action@v1.2.1
+      uses: namespacelabs/nscloud-cache-action@v1
       if: inputs.namespacelabs == 'true'
       with:
         path: /nix
@@ -34,7 +41,7 @@ runs:
 
     # NATIVE VERSION
     - name: Checkout Repository
-      uses: actions/checkout@v4.2.2
+      uses: actions/checkout@v4
       if: inputs.namespacelabs == 'false' && inputs.checkout == 'true'
     - name: Install Nix
       uses: DeterminateSystems/nix-installer-action@main

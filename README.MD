@@ -25,6 +25,7 @@ jobs:
 | --- | --- | --- | --- |
 | namespacelabs | Using Namespace Lab's runners | `false` | true |
 | checkout | Whether to checkout the repository | `false` | true |
+| short-length | length for short values | `false` | 7 |
 <!-- action-docs-inputs -->
 
 <!-- action-docs-outputs -->
