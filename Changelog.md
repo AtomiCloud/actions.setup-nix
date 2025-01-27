@@ -1,3 +1,17 @@
+## [1.3.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v1.2.1...v1.3.0) (2025-01-27)
+
+
+### 🐛 Bug Fixes 🐛
+
+* allow major and minor tags to be published ([af8b03e](https://github.com/AtomiCloud/actions.setup-nix/commit/af8b03e9949f45b40251b53c5c58a7ab13e43484))
+
+
+### ✨ Features ✨
+
+* pinned to major, added slug action ([34f2869](https://github.com/AtomiCloud/actions.setup-nix/commit/34f2869557c42058dc67db0bce3bd92ff0ef9dd3))
+* update actions to latest release ([0459029](https://github.com/AtomiCloud/actions.setup-nix/commit/04590295d778d368c8976e34ee25645a46aadfb6))
+* upgrade infrastructure ([75081e9](https://github.com/AtomiCloud/actions.setup-nix/commit/75081e9ac73fa887007e0b1a48986dcb0e633b22))
+
 ## [1.2.1](https://github.com/AtomiCloud/actions.setup-nix/compare/v1.2.0...v1.2.1) (2024-02-24)
 
 
