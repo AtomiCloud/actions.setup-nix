@@ -32,7 +32,12 @@ plugins:
         - Changelog.md
   - module: '@semantic-release/github'
     version: 10.3.5
-
+  - module: 'semantic-release-major-tag'
+    version: 0.3.2
+    config:
+      customTags:
+        - 'v${major}'
+        - 'v${major}.${minor}'
 types:
   - type: fix
     section: 🐛 Bug Fixes 🐛
