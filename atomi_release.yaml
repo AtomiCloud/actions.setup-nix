@@ -20,15 +20,18 @@ specialScopes:
     release: false
 
 plugins:
-  - module: "@semantic-release/changelog"
+  - module: '@semantic-release/changelog'
+    version: 6.0.3
     config:
       changelogFile: Changelog.md
-  - module: "@semantic-release/git"
+  - module: '@semantic-release/git'
+    version: 10.0.1
     config:
       message: "release: ${nextRelease.version}\n\n${nextRelease.notes}"
       assets:
         - Changelog.md
-  - module: "@semantic-release/github"
+  - module: '@semantic-release/github'
+    version: 10.3.5
 
 types:
   - type: fix
@@ -37,7 +40,7 @@ types:
     vae:
       verb: fix
       application: <title>
-      example: "fix: action wrongly retrieving env var"
+      example: 'fix: action wrongly retrieving env var'
     scopes:
       default:
         desc: Generic fixes not under `action` or `config`
@@ -55,7 +58,7 @@ types:
     vae:
       verb: add
       application: <title> to the GitHub action
-      example: "feat: generators for random numbers"
+      example: 'feat: generators for random numbers'
     scopes:
       default:
         desc: Adds a new feature into the GitHub action
@@ -67,7 +70,7 @@ types:
     vae:
       verb: remove
       application: title
-      example: "remove: generators for random numbers"
+      example: 'remove: generators for random numbers'
     scopes:
       default:
         desc: Removed or deprecated a features from the action
@@ -79,7 +82,7 @@ types:
     vae:
       verb: document
       application: <title>
-      example: "docs(dev): how to setup dev environment"
+      example: 'docs(dev): how to setup dev environment'
     scopes:
       default:
         desc: Adds a generic documentation not related to `dev` or `user`
@@ -110,7 +113,7 @@ types:
     vae:
       verb: configure
       application: <title>
-      example: "config(lint): shellcheck to ignore SC2015 for run.sh"
+      example: 'config(lint): shellcheck to ignore SC2015 for run.sh'
     scopes:
       default:
         desc: Updates the configuration of the repository, not related to the other scopes
@@ -135,7 +138,7 @@ types:
     vae:
       verb: refactor
       application: <title>
-      example: "refactor: install nix and cachix into a single faster step"
+      example: 'refactor: install nix and cachix into a single faster step'
     scopes:
       default:
         desc: Refactor the dockerfile

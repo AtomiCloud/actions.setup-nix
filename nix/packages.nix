@@ -1,27 +1,23 @@
-{ pkgs, atomi, pkgs-2305, pkgs-feb-23-24 }:
+{ pkgs, atomi, pkgs-2411 }:
 let
   all = {
     atomipkgs = (
       with atomi;
       {
         inherit
-          infisical
           action_docs
           pls
           sg;
       }
     );
-    nix-2305 = (
-      with pkgs-2305;
-      { }
-    );
-    feb-23-24 = (
-      with pkgs-feb-23-24;
+    nix-2411 = (
+      with pkgs-2411;
       {
         inherit
           coreutils
           git
           bash
+          infisical
 
           # lint
           treefmt
@@ -29,9 +25,9 @@ let
           shellcheck;
       }
     );
+
   };
 in
 with all;
-nix-2305 //
-feb-23-24 //
+nix-2411 //
 atomipkgs

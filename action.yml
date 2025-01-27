@@ -1,12 +1,12 @@
 name: Setup AtomiCloud CI Nix
-description: "Setup AtomiCloud CI Nix (Compatible with Namespace)"
+description: 'Setup AtomiCloud CI Nix (Compatible with Namespace)'
 inputs:
   namespacelabs:
-    default: "true"
+    default: 'true'
     description: "Using Namespace Lab's runners"
   checkout:
-    default: "true"
-    description: "Whether to checkout the repository"
+    default: 'true'
+    description: 'Whether to checkout the repository'
   short-length:
     default: 7
     description: length for short values
@@ -14,7 +14,7 @@ branding:
   color: blue
   icon: settings
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
     - name: Inject enhanced GitHub environment variables
       uses: rlespinasse/github-slug-action@v5.x
