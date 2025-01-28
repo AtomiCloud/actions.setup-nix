@@ -10,16 +10,13 @@ inputs:
   short-length:
     default: 7
     description: length for short values
+
 branding:
   color: blue
   icon: settings
 runs:
   using: 'composite'
   steps:
-    - name: Inject enhanced GitHub environment variables
-      uses: rlespinasse/github-slug-action@v5.x
-      with:
-        short-length: 7
     # NAMESPACE LAB VERSION
     - name: Checkout Repository
       uses: namespacelabs/nscloud-checkout-action@v5
@@ -49,3 +46,8 @@ runs:
     - name: Cache Nix
       uses: DeterminateSystems/magic-nix-cache-action@main
       if: inputs.namespacelabs == 'false'
+
+    - name: Inject enhanced GitHub environment variables
+      uses: rlespinasse/github-slug-action@v5.x
+      with:
+        short-length: ${{ inputs.short-length }}
