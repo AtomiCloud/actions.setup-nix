@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/AtomiCloud/actions.setup-nix/compare/v1.3.0...v1.3.1) (2025-01-28)
+
+
+### 🐛 Bug Fixes 🐛
+
+* incorrect short-length propogation ([2aeff6c](https://github.com/AtomiCloud/actions.setup-nix/commit/2aeff6c1b6bfcd5503b3c91e758dcb9428235a43))
+
 ## [1.3.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v1.2.1...v1.3.0) (2025-01-27)
 
 
