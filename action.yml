@@ -9,7 +9,7 @@ inputs:
     description: 'Whether to checkout the repository'
   short-length:
     default: 7
-    description: length for short values
+    description: length for short SHA values generated. See rlespinasse/github-slug-action.
 
 branding:
   color: blue
