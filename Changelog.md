@@ -1,3 +1,15 @@
+## [1.3.2](https://github.com/AtomiCloud/actions.setup-nix/compare/v1.3.1...v1.3.2) (2025-03-04)
+
+
+### 🐛 Bug Fixes 🐛
+
+* **default:** remove deprecated magic nix cache ([cd7058e](https://github.com/AtomiCloud/actions.setup-nix/commit/cd7058e2971277e90918e43c80383fbbac72c64c))
+
+
+### 📝 Documentation Updates 📝
+
+* better description for short-length ([102b423](https://github.com/AtomiCloud/actions.setup-nix/commit/102b42370190aa1038486ca795c09a017b87e488))
+
 ## [1.3.1](https://github.com/AtomiCloud/actions.setup-nix/compare/v1.3.0...v1.3.1) (2025-01-28)
 
 
