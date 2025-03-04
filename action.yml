@@ -43,9 +43,6 @@ runs:
     - name: Install Nix
       uses: DeterminateSystems/nix-installer-action@main
       if: inputs.namespacelabs == 'false'
-    - name: Cache Nix
-      uses: DeterminateSystems/magic-nix-cache-action@main
-      if: inputs.namespacelabs == 'false'
 
     - name: Inject enhanced GitHub environment variables
       uses: rlespinasse/github-slug-action@v5.x
