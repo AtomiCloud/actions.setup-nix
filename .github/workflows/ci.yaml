@@ -11,7 +11,7 @@ jobs:
       - nscloud-git-mirror-1gb
     steps:
       - uses: actions/checkout@v4
-      - uses: ./action.yml #temp setup to test e2e of new action.yml
+      - uses: ./.github/actions #temp setup to test e2e of new action.yml
       - name: Run Pre-commit checks
         run: nix develop .#ci -c scripts/ci/pre-commit.sh
   release:
@@ -25,12 +25,12 @@ jobs:
       - nscloud-cache-tag-releaser-nix-store-cache
       - nscloud-git-mirror-1gb
     permissions:
-      contents: "write"
-      packages: "write"
-      actions: "read"
+      contents: 'write'
+      packages: 'write'
+      actions: 'read'
     steps:
       - uses: actions/checkout@v4
-      - uses: ./action.yml #temp setup to test e2e of new action.yml
+      - uses: ./.github/actions #temp setup to test e2e of new action.yml
         with:
           checkout: true
           auth-bot-app-id: ${{ vars.AUTH_BOT_APP_ID }}
