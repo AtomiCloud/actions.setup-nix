@@ -10,6 +10,7 @@ jobs:
       - nscloud-cache-tag-action-nix-store-cache
       - nscloud-git-mirror-1gb
     steps:
+      - uses: actions/checkout@v2.3.4
       - uses: ./action.yml #temp setup to test e2e of new action.yml
       - name: Run Pre-commit checks
         run: nix develop .#ci -c scripts/ci/pre-commit.sh
@@ -28,6 +29,7 @@ jobs:
       packages: "write"
       actions: "read"
     steps:
+      - uses: actions/checkout@v2.3.4
       - uses: ./action.yml #temp setup to test e2e of new action.yml
         with:
           checkout: true
