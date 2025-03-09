@@ -20,7 +20,8 @@ jobs:
         run: nix develop .#ci -c scripts/ci/pre-commit.sh
   release:
     name: Release
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/feature-ci'
+    # to revert to main
     needs:
       - precommit
     runs-on:
