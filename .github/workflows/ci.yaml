@@ -10,7 +10,7 @@ jobs:
       - nscloud-cache-tag-action-nix-store-cache
       - nscloud-git-mirror-1gb
     steps:
-      - uses: AtomiCloud/actions.setup-nix@v1
+      - uses: ./action.yml #temp setup to test e2e of new action.yml
       - name: Run Pre-commit checks
         run: nix develop .#ci -c scripts/ci/pre-commit.sh
   release:
@@ -28,7 +28,7 @@ jobs:
       packages: "write"
       actions: "read"
     steps:
-      - uses: AtomiCloud/actions.setup-nix@v1  
+      - uses: ./action.yml #temp setup to test e2e of new action.yml
         with:
           checkout: true
           auth-bot-app-id: ${{ vars.AUTH_BOT_APP_ID }}
