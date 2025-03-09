@@ -1,26 +1,50 @@
 name: Setup AtomiCloud CI Nix
-description: 'Setup AtomiCloud CI Nix (Compatible with Namespace)'
+description: "Setup AtomiCloud CI Nix (Compatible with Namespace)"
 inputs:
   namespacelabs:
-    default: 'true'
+    default: "true"
     description: "Using Namespace Lab's runners"
   checkout:
-    default: 'true'
-    description: 'Whether to checkout the repository'
+    default: "true"
+    description: "Whether to checkout the repository"
   short-length:
     default: 7
-    description: length for short SHA values generated. See rlespinasse/github-slug-action.
-
+    description: length for short values
+  auth-bot-app-id:
+    description: App Id for auth bot
+  auth-bot-secret-key:
+    description: Private key for auth bot
 branding:
   color: blue
   icon: settings
+
 runs:
-  using: 'composite'
+  using: "composite"
   steps:
+    - name: Inject enhanced GitHub environment variables
+      uses: rlespinasse/github-slug-action@v5.x
+      with:
+        short-length: ${{ inputs.short-length }}
+    - name: Generate Github App Token
+      uses: actions/create-github-app-token@v1
+      id: app-token
+      with:
+        app-id: ${{ inputs.auth-bot-app-id }}
+        private-key: ${{ inputs.auth-bot-secret-key }}
+    - name: Checkout Config
+      if: inputs.checkout == 'true'
+      shell: bash
+      run: |
+        git config user.name auth-bot
+        git config user.email auth-bot@atomi.cloud
+
     # NAMESPACE LAB VERSION
     - name: Checkout Repository
-      uses: namespacelabs/nscloud-checkout-action@v5
       if: inputs.namespacelabs == 'true' && inputs.checkout == 'true'
+      uses: namespacelabs/nscloud-checkout-action@v5
+      with:
+        fetch-depth: 0
+        token: ${{ steps.app-token.outputs.token}}
     - name: Setup Nix Folder
       shell: bash
       if: inputs.namespacelabs == 'true'
@@ -38,13 +62,14 @@ runs:
 
     # NATIVE VERSION
     - name: Checkout Repository
-      uses: actions/checkout@v4
       if: inputs.namespacelabs == 'false' && inputs.checkout == 'true'
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ steps.app-token.outputs.token }}
     - name: Install Nix
       uses: DeterminateSystems/nix-installer-action@main
       if: inputs.namespacelabs == 'false'
-
-    - name: Inject enhanced GitHub environment variables
-      uses: rlespinasse/github-slug-action@v5.x
-      with:
-        short-length: ${{ inputs.short-length }}
+    - name: Cache Nix
+      uses: DeterminateSystems/magic-nix-cache-action@main
+      if: inputs.namespacelabs == 'false'
