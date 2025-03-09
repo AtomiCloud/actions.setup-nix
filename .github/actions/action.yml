@@ -1,9 +1,9 @@
 name: Setup AtomiCloud CI Nix
 description: 'Setup AtomiCloud CI Nix (Compatible with Namespace)'
 inputs:
-  namespacelabs:
-    default: 'true'
-    description: "Using Namespace Lab's runners"
+  # namespacelabs:
+  #   default: 'true'
+  #   description: "Using Namespace Lab's runners"
   checkout:
     default: 'true'
     description: 'Whether to checkout the repository'
@@ -62,7 +62,7 @@ runs:
 
     # NATIVE VERSION
     - name: Checkout Repository
-      if: inputs.namespacelabs == 'false' && inputs.checkout == 'true'
+      if: inputs.checkout == 'true'
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
