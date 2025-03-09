@@ -23,8 +23,16 @@ jobs:
       - nscloud-cache-size-50gb
       - nscloud-cache-tag-releaser-nix-store-cache
       - nscloud-git-mirror-1gb
+    permissions:
+      contents: "write"
+      packages: "write"
+      actions: "read"
     steps:
-      - uses: AtomiCloud/actions.setup-nix@v1
+      - uses: AtomiCloud/actions.setup-nix@v1  
+        with:
+          checkout: true
+          auth-bot-app-id: ${{ vars.AUTH_BOT_APP_ID }}
+          auth-bot-secret-key: ${{ secrets.AUTH_BOT_SECRET_KEY }}
       - uses: AtomiCloud/actions.cache-npm@v1.0.1
 
       - name: Release
