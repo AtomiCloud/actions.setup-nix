@@ -38,27 +38,27 @@ runs:
         git config user.name auth-bot
         git config user.email auth-bot@atomi.cloud
 
-    # NAMESPACE LAB VERSION
-    - name: Checkout Repository
-      if: inputs.namespacelabs == 'true' && inputs.checkout == 'true'
-      uses: namespacelabs/nscloud-checkout-action@v5
-      with:
-        fetch-depth: 0
-        token: ${{ steps.app-token.outputs.token}}
-    - name: Setup Nix Folder
-      shell: bash
-      if: inputs.namespacelabs == 'true'
-      run: |
-        sudo mkdir /nix
-        sudo chown $USER /nix
-    - name: Cache Nix
-      uses: namespacelabs/nscloud-cache-action@v1
-      if: inputs.namespacelabs == 'true'
-      with:
-        path: /nix
-    - name: Install Nix
-      if: inputs.namespacelabs == 'true'
-      uses: cachix/install-nix-action@v30
+    # # NAMESPACE LAB VERSION
+    # - name: Checkout Repository
+    #   if: inputs.namespacelabs == 'true' && inputs.checkout == 'true'
+    #   uses: namespacelabs/nscloud-checkout-action@v5
+    #   with:
+    #     fetch-depth: 0
+    #     token: ${{ steps.app-token.outputs.token}}
+    # - name: Setup Nix Folder
+    #   shell: bash
+    #   if: inputs.namespacelabs == 'true'
+    #   run: |
+    #     sudo mkdir /nix
+    #     sudo chown $USER /nix
+    # - name: Cache Nix
+    #   uses: namespacelabs/nscloud-cache-action@v1
+    #   if: inputs.namespacelabs == 'true'
+    #   with:
+    #     path: /nix
+    # - name: Install Nix
+    #   if: inputs.namespacelabs == 'true'
+    #   uses: cachix/install-nix-action@v30
 
     # NATIVE VERSION
     - name: Checkout Repository
