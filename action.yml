@@ -25,21 +25,21 @@ runs:
       uses: rlespinasse/github-slug-action@v5.x
       with:
         short-length: ${{ inputs.short-length }}
-    
+
     - name: Generate Github App Token
       uses: actions/create-github-app-token@v1
       id: app-token
       with:
         app-id: ${{ inputs.auth-bot-app-id }}
         private-key: ${{ inputs.auth-bot-secret-key }}
-    
+
     - name: Checkout Config
       if: inputs.checkout == 'true'
       shell: bash
       run: |
         git config user.name auth-bot
         git config user.email auth-bot@atomi.cloud
-    
+
     - name: Checkout Repository
       if: inputs.checkout == 'true'
       uses: actions/checkout@v4
@@ -66,7 +66,8 @@ runs:
     # NATIVE VERSION
     - name: Install Nix
       uses: DeterminateSystems/nix-installer-action@main
-      # if: inputs.namespacelabs == 'false'
+      if: inputs.namespacelabs == 'false'
+
     - name: Cache Nix
       uses: DeterminateSystems/magic-nix-cache-action@main
-      # if: inputs.namespacelabs == 'false'
+      if: inputs.namespacelabs == 'false'
