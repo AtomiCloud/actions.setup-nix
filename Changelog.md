@@ -1,3 +1,25 @@
+## [2.0.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v1.3.2...v2.0.0) (2025-03-23)
+
+
+### 🐛 Bug Fixes 🐛
+
+* added input check for native ([9abbf76](https://github.com/AtomiCloud/actions.setup-nix/commit/9abbf769c5b22e00042c01ca07c278cc7e678a60))
+* commented out namespace lab checkout ([8d94232](https://github.com/AtomiCloud/actions.setup-nix/commit/8d942329450bd5fc10cdc7e578f9da74491e4ed4))
+* removed namespace labs if checks from action ([6da1f3c](https://github.com/AtomiCloud/actions.setup-nix/commit/6da1f3cce31fca46800cf073d4c8421c8018e948))
+* removed namespace labs inputs ([5904466](https://github.com/AtomiCloud/actions.setup-nix/commit/5904466b1f170d038535c2734e5ad3c6dac47d6c))
+* renamed local_action ([fd15ced](https://github.com/AtomiCloud/actions.setup-nix/commit/fd15cedce2a0cd87bb7d5ce5e1ed71834816eb93))
+
+
+### ✨ Features ✨
+
+* added token gen to action to allow auth-bot commits on main ([#3](https://github.com/AtomiCloud/actions.setup-nix/issues/3)) ([27fd36a](https://github.com/AtomiCloud/actions.setup-nix/commit/27fd36af082d42ad46347a067ba1ad4e04e82485))
+* added token gen to allow auth-bot code commits on protected branch ([98e8bc3](https://github.com/AtomiCloud/actions.setup-nix/commit/98e8bc3cdd4fd7d522a34a9de0f8576cc90d44db))
+
+
+### 🗑️ Removed 🗑
+
+* removed namespacelab checkout action ([f236960](https://github.com/AtomiCloud/actions.setup-nix/commit/f236960ff3cd4d8b21abc7fbd1677883a587b619))
+
 ## [1.3.2](https://github.com/AtomiCloud/actions.setup-nix/compare/v1.3.1...v1.3.2) (2025-03-04)
 
 
