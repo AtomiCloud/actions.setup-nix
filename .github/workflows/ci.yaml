@@ -10,11 +10,7 @@ jobs:
       - nscloud-cache-tag-action-nix-store-cache
       - nscloud-git-mirror-1gb
     steps:
-      - uses: AtomiCloud/actions.setup-nix@v1
-        with:
-          checkout: true
-          # auth-bot-app-id: ${{ vars.AUTH_BOT_APP_ID }}
-          # auth-bot-secret-key: ${{ secrets.AUTH_BOT_SECRET_KEY }}
+      - uses: AtomiCloud/actions.setup-nix@v2
       - name: Run Pre-commit checks
         run: nix develop .#ci -c scripts/ci/pre-commit.sh
   release:
@@ -32,12 +28,11 @@ jobs:
       packages: 'write'
       actions: 'read'
     steps:
-      - uses: AtomiCloud/actions.setup-nix@v1
+      - uses: AtomiCloud/actions.setup-nix@v2
         with:
-          checkout: true
-          # auth-bot-app-id: ${{ vars.AUTH_BOT_APP_ID }}
-          # auth-bot-secret-key: ${{ secrets.AUTH_BOT_SECRET_KEY }}
-      - uses: AtomiCloud/actions.cache-npm@v1.0.1
+          auth-bot-app-id: ${{ vars.AUTH_BOT_APP_ID }}
+          auth-bot-secret-key: ${{ secrets.AUTH_BOT_SECRET_KEY }}
+      - uses: AtomiCloud/actions.cache-npm@v1
 
       - name: Release
         env:
