@@ -11,8 +11,10 @@ inputs:
     default: 7
     description: length for short values
   auth-bot-app-id:
+    default: ''
     description: App Id for auth bot
   auth-bot-secret-key:
+    default: ''
     description: Private key for auth bot
 branding:
   color: blue
@@ -28,24 +30,31 @@ runs:
 
     - name: Generate Github App Token
       uses: actions/create-github-app-token@v1
+      if: inputs.auth-bot-app-id != '' && inputs.auth-bot-secret-key != ''
       id: app-token
       with:
         app-id: ${{ inputs.auth-bot-app-id }}
         private-key: ${{ inputs.auth-bot-secret-key }}
 
     - name: Checkout Config
-      if: inputs.checkout == 'true'
+      if: inputs.checkout == 'true' && inputs.auth-bot-app-id != '' && inputs.auth-bot-secret-key != ''
       shell: bash
       run: |
         git config user.name auth-bot
         git config user.email auth-bot@atomi.cloud
 
-    - name: Checkout Repository
-      if: inputs.checkout == 'true'
+    - name: Checkout Repository With Auth Bot
+      if: inputs.checkout == 'true' && inputs.auth-bot-app-id != '' && inputs.auth-bot-secret-key != ''
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
         token: ${{ steps.app-token.outputs.token }}
+
+    - name: Checkout Repository
+      if: inputs.checkout == 'true' && inputs.auth-bot-app-id == '' && inputs.auth-bot-secret-key == ''
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     # NAMESPACE LAB VERSION
     - name: Setup Nix Folder
