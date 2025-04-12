@@ -1,3 +1,11 @@
+## [2.1.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.0.0...v2.1.0) (2025-04-12)
+
+
+### ✨ Features ✨
+
+* **default:** allow not using auth-bot ([#4](https://github.com/AtomiCloud/actions.setup-nix/issues/4)) ([398d69c](https://github.com/AtomiCloud/actions.setup-nix/commit/398d69c95fae7cd8b2cfb23afe89a9d1538ce096))
+* **default:** allow not using auth-bot ([b992c45](https://github.com/AtomiCloud/actions.setup-nix/commit/b992c455aa51a9bdede24ed47bcb1cc6c49aa448))
+
 ## [2.0.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v1.3.2...v2.0.0) (2025-03-23)
 
 
