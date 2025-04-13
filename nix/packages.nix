@@ -5,6 +5,7 @@ let
       with atomi;
       {
         inherit
+          atomiutils
           action_docs
           pls
           sg;
@@ -14,9 +15,7 @@ let
       with pkgs-2411;
       {
         inherit
-          coreutils
           git
-          bash
           infisical
 
           # lint

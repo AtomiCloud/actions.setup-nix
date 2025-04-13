@@ -4,7 +4,7 @@ with packages;
   minimal = [
     pls
     git
-    coreutils
+    atomiutils
   ];
 
   lint = [
