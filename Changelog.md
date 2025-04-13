@@ -1,3 +1,20 @@
+## [2.2.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.1.0...v2.2.0) (2025-04-13)
+
+
+### 🐛 Bug Fixes 🐛
+
+* **action:** allow weak pin on gha ([667e11a](https://github.com/AtomiCloud/actions.setup-nix/commit/667e11a9dbbf861346753246b523eccd3157a6cc))
+* **action:** checkout git repository ([#6](https://github.com/AtomiCloud/actions.setup-nix/issues/6)) ([e115d07](https://github.com/AtomiCloud/actions.setup-nix/commit/e115d079e2bff6e3330f68397da40b871f2c5123))
+* **action:** checkout git repository ([e1c5219](https://github.com/AtomiCloud/actions.setup-nix/commit/e1c5219a655aefd94ccebac23bf91589c10666f0))
+* **action:** temporarily depend on v1 ([5380e20](https://github.com/AtomiCloud/actions.setup-nix/commit/5380e201d5b4ea745f77d1f896386fa9683048e6))
+* **action:** upgrade to v2 setup-nix ([885c6e7](https://github.com/AtomiCloud/actions.setup-nix/commit/885c6e78e182f4a11e9d6e298fa08c1f0b571916))
+
+
+### ✨ Features ✨
+
+* **ci:** switch to using rulesets for CI ([#5](https://github.com/AtomiCloud/actions.setup-nix/issues/5)) ([988a0a2](https://github.com/AtomiCloud/actions.setup-nix/commit/988a0a2291e19b8c921b5cd1922480945540b6ae))
+* **ci:** switch to using rulesets for CI ([d80bfe1](https://github.com/AtomiCloud/actions.setup-nix/commit/d80bfe1e2628ce968c882ec4a1a1cc9c7bc122d6))
+
 ## [2.1.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.0.0...v2.1.0) (2025-04-12)
 
 
