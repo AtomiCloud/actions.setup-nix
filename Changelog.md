@@ -1,3 +1,11 @@
+## [2.4.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.3.0...v2.4.0) (2025-04-13)
+
+
+### ✨ Features ✨
+
+* **default:** migrate to atomiutils from coreutils ([#8](https://github.com/AtomiCloud/actions.setup-nix/issues/8)) ([0db2657](https://github.com/AtomiCloud/actions.setup-nix/commit/0db26573bc3e3c49c7f51404092402a290c46f38))
+* **default:** migrate to atomiutils from coreutils ([dbafc15](https://github.com/AtomiCloud/actions.setup-nix/commit/dbafc159799110d1b9a41499f4cecbd07c1656e9))
+
 ## [2.3.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.2.0...v2.3.0) (2025-04-13)
 
 
