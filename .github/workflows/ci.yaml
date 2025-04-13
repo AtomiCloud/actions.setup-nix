@@ -28,10 +28,10 @@ jobs:
       packages: 'write'
       actions: 'read'
     steps:
-      - uses: AtomiCloud/actions.setup-nix@v2
-        with:
-          auth-bot-app-id: ${{ vars.AUTH_BOT_APP_ID }}
-          auth-bot-secret-key: ${{ secrets.AUTH_BOT_SECRET_KEY }}
+      - uses: AtomiCloud/actions.setup-nix@v1
+        # with:
+        #   auth-bot-app-id: ${{ vars.AUTH_BOT_APP_ID }}
+        #   auth-bot-secret-key: ${{ secrets.AUTH_BOT_SECRET_KEY }}
       - uses: AtomiCloud/actions.cache-npm@v1
 
       - name: Release
