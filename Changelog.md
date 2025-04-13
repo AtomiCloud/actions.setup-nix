@@ -1,3 +1,11 @@
+## [2.3.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.2.0...v2.3.0) (2025-04-13)
+
+
+### ✨ Features ✨
+
+* **default:** upgrade to use authbot to allow ruleset ([#7](https://github.com/AtomiCloud/actions.setup-nix/issues/7)) ([19187dc](https://github.com/AtomiCloud/actions.setup-nix/commit/19187dc843fa38f9c97b4149b4105101c11c304c))
+* **default:** upgrade to use authbot to allow ruleset ([a9c067b](https://github.com/AtomiCloud/actions.setup-nix/commit/a9c067b81a06d7d0fa52bbe943cbe53e99a44643))
+
 ## [2.2.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.1.0...v2.2.0) (2025-04-13)
 
 
