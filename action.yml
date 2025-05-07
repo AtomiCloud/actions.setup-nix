@@ -76,7 +76,3 @@ runs:
     - name: Install Nix
       uses: DeterminateSystems/nix-installer-action@main
       if: inputs.namespacelabs == 'false'
-
-    - name: Cache Nix
-      uses: DeterminateSystems/magic-nix-cache-action@main
-      if: inputs.namespacelabs == 'false'
