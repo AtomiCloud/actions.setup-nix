@@ -11,8 +11,6 @@ jobs:
       - nscloud-git-mirror-1gb
     steps:
       - uses: AtomiCloud/actions.setup-nix@Ernest/CU-86etuanhu/Attic-Action-Use-attic-binary-cache-in-setup-nix-CI-action-when-detecting-ATTICTOKEN
-        with:
-          attic-token: ${{ secrets.ATTIC_TOKEN }}
       - name: Run Pre-commit checks
         run: nix develop .#ci -c scripts/ci/pre-commit.sh
   release:
