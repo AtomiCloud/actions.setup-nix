@@ -16,6 +16,22 @@ inputs:
   auth-bot-secret-key:
     default: ''
     description: Private key for auth bot
+  attic:
+    default: 'true'
+    description: 'Configure attic as substituters'
+  attic-user:
+    default: 'atomicloud'
+    description: 'User for attic'
+  attic-url:
+    default: 'https://attic-atomicloud.fly.dev'
+    description: 'URL for attic'
+  attic-cache:
+    default: 'all'
+    description: 'Cache attic'
+  attic-token:
+    default: ''
+    description: 'Token for attic'
+
 branding:
   color: blue
   icon: settings
@@ -76,3 +92,22 @@ runs:
     - name: Install Nix
       uses: DeterminateSystems/nix-installer-action@main
       if: inputs.namespacelabs == 'false'
+
+    # SETUP ATTIC
+    - name: Install Attic
+      shell: bash
+      if: inputs.attic == 'true'
+      run: |
+        nix profile install github:zhaofengli/attic#default
+
+    - name: Login to Attic
+      shell: bash
+      if: inputs.attic-token != ''
+      run: |
+        attic login "${{ inputs.attic-user }}" "${{ inputs.attic-url }}" "${{ inputs.attic-token }}"
+
+    - name: Add Attic as Substituter
+      shell: bash
+      if: inputs.attic == 'true'
+      run: |
+        attic use "${{ inputs.attic-url }}:${{ inputs.attic-cache }}"

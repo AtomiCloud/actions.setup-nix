@@ -1,4 +1,4 @@
-{ pkgs, atomi, pkgs-2411 }:
+{ pkgs, atomi, pkgs-2505 }:
 let
   all = {
     atomipkgs = (
@@ -11,8 +11,8 @@ let
           sg;
       }
     );
-    nix-2411 = (
-      with pkgs-2411;
+    nix-2505 = (
+      with pkgs-2505;
       {
         inherit
           git
@@ -28,5 +28,5 @@ let
   };
 in
 with all;
-nix-2411 //
+nix-2505 //
 atomipkgs
