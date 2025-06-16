@@ -14,25 +14,29 @@ on:
         type: string
 
 jobs:
-  cacheshell:
-    name: Cache Shell
+  cacheshell-linux:
+    name: Cache Shell Linux
     strategy:
       matrix:
         platform:
           - name: Linux x86_64
+            namespacelabs: true
             os:
               - nscloud-ubuntu-22.04-amd64-4x8-with-cache
               - nscloud-cache-size-50gb
               - nscloud-cache-tag-${{ inputs.atomi_platform }}-${{ inputs.atomi_service }}-nix-store-cache
           - name: Linux aarch64
+            namespacelabs: true
             os:
               - nscloud-ubuntu-22.04-arm64-4x8-with-cache
               - nscloud-cache-size-50gb
               - nscloud-cache-tag-${{ inputs.atomi_platform }}-${{ inputs.atomi_service }}-nix-store-cache
           - name: MacOS x86_64
+            namespacelabs: false
             os:
               - macos-13
           - name: MacOS aarch64
+            namespacelabs: false
             os:
               - macos-15
     runs-on: ${{ matrix.platform.os }}
@@ -40,6 +44,7 @@ jobs:
       # Setup
       - uses: AtomiCloud/actions.setup-nix@Ernest/CU-86etuanhu/Attic-Action-Use-attic-binary-cache-in-setup-nix-CI-action-when-detecting-ATTICTOKEN
         with:
+          namespacelabs: ${{ matrix.platform.namespacelabs }}
           attic-token: ${{ secrets.ATTIC_TOKEN }}
       # Build and Push Shell
       - name: Build and Push Shell
