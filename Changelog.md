@@ -1,3 +1,19 @@
+## [2.5.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.4.0...v2.5.0) (2025-06-17)
+
+
+### 🐛 Bug Fixes 🐛
+
+* incorrect workflow wait ([7672a6c](https://github.com/AtomiCloud/actions.setup-nix/commit/7672a6ca29b917ef294f2434ed746f829b5b0d62))
+* use non-namespacelabs version for macos ([d385c6f](https://github.com/AtomiCloud/actions.setup-nix/commit/d385c6ffa32da3a74789846d41c29fc04e47eab0))
+
+
+### ✨ Features ✨
+
+* allow using attic token ([fcc736d](https://github.com/AtomiCloud/actions.setup-nix/commit/fcc736d415125566270b3a931c4c45d9e91c3376))
+* cache nix shells ([234adf0](https://github.com/AtomiCloud/actions.setup-nix/commit/234adf03dd94efc61b403a3a97fb11767459c249))
+* only push shells on tag release ([8374be1](https://github.com/AtomiCloud/actions.setup-nix/commit/8374be17d8511dabaf8d9bc08b716412786beba3))
+* use substituters directly ([302cad0](https://github.com/AtomiCloud/actions.setup-nix/commit/302cad08064faffecfb90783e6fe5db99ea279b3))
+
 ## [2.4.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.3.0...v2.4.0) (2025-04-13)
 
 
