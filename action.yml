@@ -16,6 +16,25 @@ inputs:
   auth-bot-secret-key:
     default: ''
     description: Private key for auth bot
+  attic:
+    default: 'true'
+    description: 'Configure attic as substituters'
+  attic-user:
+    default: 'atomicloud'
+    description: 'User for attic'
+  attic-url:
+    default: 'https://attic-atomicloud.fly.dev'
+    description: 'URL for attic'
+  attic-public-key:
+    default: 'all:uiWsynIsiSHKa2RuLZ3+8yE9lm1EVstE9RQ6RvRnVgU='
+    description: 'Public key for attic'
+  attic-cache:
+    default: 'all'
+    description: 'Cache attic'
+  attic-token:
+    default: ''
+    description: 'Token for attic'
+
 branding:
   color: blue
   icon: settings
@@ -71,8 +90,31 @@ runs:
     - name: Install Nix
       if: inputs.namespacelabs == 'true'
       uses: cachix/install-nix-action@v30
+      with:
+        extra_nix_config: |
+          fallback = true
+          substituters = https://nix-community.cachix.org?priority=41 https://numtide.cachix.org?priority=42 https://cache.nixos.org/ ${{ inputs.attic-url }}
+          trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= numtide.cachix.org-1:2ps1kLBUWjxIneOy1Ik6cQjb41X0iXVXeHigGmycPPE= ${{ inputs.attic-public-key }}
 
     # NATIVE VERSION
     - name: Install Nix
       uses: DeterminateSystems/nix-installer-action@main
       if: inputs.namespacelabs == 'false'
+      with:
+        extra-conf: |
+          fallback = true
+          substituters = https://nix-community.cachix.org?priority=41 https://numtide.cachix.org?priority=42 https://cache.nixos.org/ ${{ inputs.attic-url }}
+          trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= numtide.cachix.org-1:2ps1kLBUWjxIneOy1Ik6cQjb41X0iXVXeHigGmycPPE= ${{ inputs.attic-public-key }}
+
+    # SETUP ATTIC
+    - name: Install Attic
+      shell: bash
+      if: inputs.attic-token != '' && inputs.attic == 'true'
+      run: |
+        nix profile install github:zhaofengli/attic#default
+
+    - name: Login to Attic
+      shell: bash
+      if: inputs.attic-token != '' && inputs.attic == 'true'
+      run: |
+        attic login "${{ inputs.attic-user }}" "${{ inputs.attic-url }}" "${{ inputs.attic-token }}"

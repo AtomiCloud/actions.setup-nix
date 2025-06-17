@@ -1,3 +1,5 @@
 .direnv
 .env
 .pre-commit-config.yaml
+result
+.idea

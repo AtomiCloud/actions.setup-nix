@@ -1,0 +1,13 @@
+name: 'Cache'
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  cacheshell:
+    name: Cache Shell
+    uses: ./.github/workflows/⚡reusable-cacheshell.yaml
+    secrets: inherit
+    with:
+      atomi_platform: actions
+      atomi_service: setup-nix
