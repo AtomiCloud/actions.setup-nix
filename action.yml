@@ -88,23 +88,40 @@ runs:
       with:
         path: /nix
     - name: Install Nix
-      if: inputs.namespacelabs == 'true'
+      if: inputs.namespacelabs == 'true' && inputs.attic == 'true'
       uses: cachix/install-nix-action@v30
       with:
         extra_nix_config: |
           fallback = true
-          substituters = https://nix-community.cachix.org?priority=41 https://numtide.cachix.org?priority=42 https://cache.nixos.org/ ${{ inputs.attic-url }}
+          substituters = https://nix-community.cachix.org?priority=41 https://numtide.cachix.org?priority=42 https://cache.nixos.org/ ${{ inputs.attic-url }}/${{ inputs.attic-cache }}?priority=43
           trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= numtide.cachix.org-1:2ps1kLBUWjxIneOy1Ik6cQjb41X0iXVXeHigGmycPPE= ${{ inputs.attic-public-key }}
+    - name: Install Nix
+      if: inputs.namespacelabs == 'true' && inputs.attic == 'false'
+      uses: cachix/install-nix-action@v30
+      with:
+        extra_nix_config: |
+          fallback = true
+          substituters = https://nix-community.cachix.org?priority=41 https://numtide.cachix.org?priority=42 https://cache.nixos.org/
+          trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= numtide.cachix.org-1:2ps1kLBUWjxIneOy1Ik6cQjb41X0iXVXeHigGmycPPE=
 
     # NATIVE VERSION
     - name: Install Nix
       uses: DeterminateSystems/nix-installer-action@main
-      if: inputs.namespacelabs == 'false'
+      if: inputs.namespacelabs == 'false' && inputs.attic == 'true'
       with:
         extra-conf: |
           fallback = true
-          substituters = https://nix-community.cachix.org?priority=41 https://numtide.cachix.org?priority=42 https://cache.nixos.org/ ${{ inputs.attic-url }}
+          substituters = https://nix-community.cachix.org?priority=41 https://numtide.cachix.org?priority=42 https://cache.nixos.org/ ${{ inputs.attic-url }}/${{ inputs.attic-cache }}?priority=43
           trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= numtide.cachix.org-1:2ps1kLBUWjxIneOy1Ik6cQjb41X0iXVXeHigGmycPPE= ${{ inputs.attic-public-key }}
+
+    - name: Install Nix
+      uses: DeterminateSystems/nix-installer-action@main
+      if: inputs.namespacelabs == 'false' && inputs.attic == 'false'
+      with:
+        extra-conf: |
+          fallback = true
+          substituters = https://nix-community.cachix.org?priority=41 https://numtide.cachix.org?priority=42 https://cache.nixos.org/
+          trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= numtide.cachix.org-1:2ps1kLBUWjxIneOy1Ik6cQjb41X0iXVXeHigGmycPPE=
 
     # SETUP ATTIC
     - name: Install Attic
