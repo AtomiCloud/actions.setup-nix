@@ -1,3 +1,10 @@
+## [2.5.1](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.5.0...v2.5.1) (2025-06-25)
+
+
+### 🐛 Bug Fixes 🐛
+
+* correct use attic substituters ([e463bb9](https://github.com/AtomiCloud/actions.setup-nix/commit/e463bb965bcbfb94205ea0b661719c1da265ef12))
+
 ## [2.5.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.4.0...v2.5.0) (2025-06-17)
 
 
