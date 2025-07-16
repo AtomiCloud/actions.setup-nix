@@ -20,6 +20,8 @@ jobs:
     steps:
       # Setup
       - uses: AtomiCloud/actions.setup-nix@v2
+        with:
+          attic: 'false'
       - uses: AtomiCloud/actions.cache-nuget@v1
 
       # Pre Commit
