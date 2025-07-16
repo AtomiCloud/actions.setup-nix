@@ -1,3 +1,16 @@
+## [2.6.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.5.1...v2.6.0) (2025-07-16)
+
+
+### 🐛 Bug Fixes 🐛
+
+* remove attic-related CI ([ebc4b32](https://github.com/AtomiCloud/actions.setup-nix/commit/ebc4b32ae39920834c46d131bddeba50a3f78578))
+
+
+### ✨ Features ✨
+
+* change default of attic to false ([4407a27](https://github.com/AtomiCloud/actions.setup-nix/commit/4407a27683494e561f58c7d93dca1de8d582e371))
+* change default of attic to false ([#12](https://github.com/AtomiCloud/actions.setup-nix/issues/12)) ([e2ff764](https://github.com/AtomiCloud/actions.setup-nix/commit/e2ff764ddecc2ffb2591513179c65b28053791c4))
+
 ## [2.5.1](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.5.0...v2.5.1) (2025-06-25)
 
 
