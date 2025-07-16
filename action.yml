@@ -17,7 +17,7 @@ inputs:
     default: ''
     description: Private key for auth bot
   attic:
-    default: 'true'
+    default: 'false'
     description: 'Configure attic as substituters'
   attic-user:
     default: 'atomicloud'
