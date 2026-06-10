@@ -1,3 +1,12 @@
+## [3.0.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.6.0...v3.0.0) (2026-06-10)
+
+
+### ✨ Features ✨
+
+* **breaking:** release new major for upgraded sub-actions ([8390abf](https://github.com/AtomiCloud/actions.setup-nix/commit/8390abfc4e954213d5c5432defe39c50f555baae))
+* **breaking:** upgrade sub-actions to latest major versions ([#13](https://github.com/AtomiCloud/actions.setup-nix/issues/13)) ([0d56956](https://github.com/AtomiCloud/actions.setup-nix/commit/0d569565226b4885b1c68d7ff2d1d72d9e5a92f6))
+* upgrade sub-actions to latest versions ([79a522c](https://github.com/AtomiCloud/actions.setup-nix/commit/79a522c29928379b63d86e110e172576daae5402))
+
 ## [2.6.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.5.1...v2.6.0) (2025-07-16)
 
 
