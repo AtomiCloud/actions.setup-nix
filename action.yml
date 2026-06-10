@@ -48,7 +48,7 @@ runs:
         short-length: ${{ inputs.short-length }}
 
     - name: Generate Github App Token
-      uses: actions/create-github-app-token@v1
+      uses: actions/create-github-app-token@v3
       if: inputs.auth-bot-app-id != '' && inputs.auth-bot-secret-key != ''
       id: app-token
       with:
@@ -57,7 +57,7 @@ runs:
 
     - name: Checkout Repository With Auth Bot
       if: inputs.checkout == 'true' && inputs.auth-bot-app-id != '' && inputs.auth-bot-secret-key != ''
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0
         token: ${{ steps.app-token.outputs.token }}
@@ -71,7 +71,7 @@ runs:
 
     - name: Checkout Repository
       if: inputs.checkout == 'true' && inputs.auth-bot-app-id == '' && inputs.auth-bot-secret-key == ''
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0
 
@@ -89,7 +89,7 @@ runs:
         path: /nix
     - name: Install Nix
       if: inputs.namespacelabs == 'true' && inputs.attic == 'true'
-      uses: cachix/install-nix-action@v30
+      uses: cachix/install-nix-action@v31
       with:
         extra_nix_config: |
           fallback = true
@@ -97,7 +97,7 @@ runs:
           trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= numtide.cachix.org-1:2ps1kLBUWjxIneOy1Ik6cQjb41X0iXVXeHigGmycPPE= ${{ inputs.attic-public-key }}
     - name: Install Nix
       if: inputs.namespacelabs == 'true' && inputs.attic == 'false'
-      uses: cachix/install-nix-action@v30
+      uses: cachix/install-nix-action@v31
       with:
         extra_nix_config: |
           fallback = true

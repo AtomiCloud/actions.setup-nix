@@ -68,6 +68,9 @@ types:
       default:
         desc: Adds a new feature into the GitHub action
         release: minor
+      breaking:
+        desc: Adds a feature that breaks backward compatibility, forcing a new major
+        release: major
 
   - type: remove
     section: 🗑️ Removed 🗑
