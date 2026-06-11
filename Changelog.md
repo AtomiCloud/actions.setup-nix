@@ -1,3 +1,11 @@
+## [3.1.1](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.1.0...v3.1.1) (2026-06-11)
+
+
+### 🐛 Bug Fixes 🐛
+
+* own darwin cache path so the post-push hook can write ([1676771](https://github.com/AtomiCloud/actions.setup-nix/commit/1676771e0511ab695a06fbccdb72ee52512dc201))
+* own darwin cache path so the post-push hook can write ([#15](https://github.com/AtomiCloud/actions.setup-nix/issues/15)) ([1b9e41f](https://github.com/AtomiCloud/actions.setup-nix/commit/1b9e41fb26be595e77aaa41bac98d1732b3be5d5))
+
 ## [3.1.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.0.0...v3.1.0) (2026-06-11)
 
 
