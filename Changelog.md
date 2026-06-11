@@ -1,3 +1,14 @@
+## [Unreleased]
+
+### ✨ Features ✨
+
+- **macOS Namespace cache**: `namespacelabs: 'true'` now works on macOS runners. Because the
+  APFS root volume is sealed (no `/nix` mount), the action persists a local `file://` binary
+  cache on a Namespace cache volume and pushes realized devShell closures back at end of job
+  via an automatic post hook. This **supersedes** the previous "use non-namespacelabs version
+  for macos" guidance — macOS callers can now use `namespacelabs: 'true'` with the standard
+  cache labels. See the README for runner labels and operational semantics.
+
 ## [3.0.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v2.6.0...v3.0.0) (2026-06-10)
 
 
