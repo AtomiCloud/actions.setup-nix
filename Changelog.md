@@ -1,3 +1,12 @@
+## [3.1.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.0.0...v3.1.0) (2026-06-11)
+
+
+### ✨ Features ✨
+
+* implement macOS Namespace file:// binary cache + auto push hook ([01336a1](https://github.com/AtomiCloud/actions.setup-nix/commit/01336a16edd11bcee22511d1ceae8fe79b67e0c1))
+* support namespacelabs cache on macOS via file:// binary cache ([d0109c8](https://github.com/AtomiCloud/actions.setup-nix/commit/d0109c8049de4dd4e887c344885390a749fca593))
+* support namespacelabs cache on macOS via file:// binary cache ([#14](https://github.com/AtomiCloud/actions.setup-nix/issues/14)) ([5f5ff37](https://github.com/AtomiCloud/actions.setup-nix/commit/5f5ff375aeba9eb64c243f355c9aa47cd4bbbd39))
+
 ## [Unreleased]
 
 ### ✨ Features ✨
