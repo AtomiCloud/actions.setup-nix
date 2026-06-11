@@ -148,6 +148,20 @@ runs:
       with:
         path: ${{ inputs.darwin-cache-path }}
 
+    # The cache action mounts the path root-owned on macOS, but the post-push hook's
+    # `nix copy` runs as the runner user and dies with EACCES ("opening file …: Permission
+    # denied"), leaving the cache permanently empty. Own it — the macOS mirror of the
+    # Linux branch's `sudo chown $USER /nix`.
+    - name: Own Darwin cache path
+      shell: bash
+      if: inputs.namespacelabs == 'true' && runner.os == 'macOS'
+      env:
+        DARWIN_CACHE_PATH: ${{ inputs.darwin-cache-path }}
+      run: |
+        set -euo pipefail
+        target="$(readlink -f "$DARWIN_CACHE_PATH" 2>/dev/null || echo "$DARWIN_CACHE_PATH")"
+        sudo chown -R "$USER" "$target"
+
     # INSTALL NIX — exactly one installer runs per (namespacelabs, os), all fed by the
     # single computed config above.
     - name: Install Nix (Namespace Linux)

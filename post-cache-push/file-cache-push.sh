@@ -10,6 +10,16 @@ set -euo pipefail
 cache_path="${1:?Usage: $0 <cache-path>}"
 nix="${NIX_BIN:-nix}"
 
+# Preflight: nix copy runs as this (non-root) user; if the mounted cache volume isn't
+# writable (e.g. the chown step was skipped), fail fast with an actionable message
+# instead of erroring mid-copy with an opaque EACCES.
+if ! touch "${cache_path}/.write-probe" 2>/dev/null; then
+  echo "::warning::${cache_path} is not writable by $(id -un); skipping cache push." \
+    "Ensure setup-nix's 'Own Darwin cache path' step ran (sudo chown -R \$USER ${cache_path}/)." >&2
+  exit 1
+fi
+rm -f "${cache_path}/.write-probe"
+
 echo "🔍 Discovering devShells for current system..."
 system="$("$nix" eval --raw --impure --expr 'builtins.currentSystem')"
 shells="$("$nix" eval --raw --impure --expr "builtins.concatStringsSep \" \" (builtins.attrNames (builtins.getFlake (toString ./.)).outputs.devShells.${system})")"
