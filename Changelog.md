@@ -1,3 +1,11 @@
+## [3.1.2](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.1.1...v3.1.2) (2026-06-12)
+
+
+### 🐛 Bug Fixes 🐛
+
+* re-own cache tree at push time, not only at setup ([61e3a58](https://github.com/AtomiCloud/actions.setup-nix/commit/61e3a584f15d80f7991b1e3d1ce98de4996463ea))
+* re-own cache tree at push time, not only at setup ([#16](https://github.com/AtomiCloud/actions.setup-nix/issues/16)) ([acde4f0](https://github.com/AtomiCloud/actions.setup-nix/commit/acde4f08abd7179af3aec93f408fd74ab39c8b86))
+
 ## [3.1.1](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.1.0...v3.1.1) (2026-06-11)
 
 
