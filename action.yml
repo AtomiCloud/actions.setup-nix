@@ -63,6 +63,10 @@ runs:
         if [ -d "$GITHUB_WORKSPACE/.git" ]; then
           echo "repository already initialized; leaving ref format as-is"
         elif git init --ref-format=reftable "$GITHUB_WORKSPACE" 2>/dev/null; then
+          # actions/checkout only reuses an existing repo when remote.origin.url
+          # string-matches the URL it is about to fetch; otherwise it wipes the
+          # directory and re-inits with the default (loose-ref) format.
+          git -C "$GITHUB_WORKSPACE" remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
           echo "initialized $GITHUB_WORKSPACE with reftable refs"
         else
           echo "::warning::$(git version) lacks reftable support; loose refs may collide on case-insensitive APFS"
