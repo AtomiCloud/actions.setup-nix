@@ -1,7 +1,7 @@
 // Post step for the AtomiCloud setup-nix action (macOS Namespace path).
 //
-// Pushes the devShell closures realized during the job back to the local file:// binary
-// cache that lives on the Namespace cache volume. The volume only commits when the job
+// Pushes every valid store path from the job back to the local file:// binary cache
+// that lives on the Namespace cache volume. The volume only commits when the job
 // exits 0, so this step MUST NEVER fail the job: every error path emits a workflow
 // notice/warning and returns normally. Dependency-free on purpose (no node_modules to
 // vendor) — we emit `::notice::`/`::warning::` workflow commands directly, which is what
@@ -69,7 +69,7 @@ function main() {
   // Bundled alongside this file so it resolves whether __dirname is the real action
   // checkout or the workspace symlink the composite action created.
   const script = path.join(__dirname, 'file-cache-push.sh');
-  // The flake whose devShells we cache is the consumer repo at GITHUB_WORKSPACE.
+  // Run from the consumer repo at GITHUB_WORKSPACE (harmless for --all, kept for clarity).
   const cwd = process.env.GITHUB_WORKSPACE || process.cwd();
 
   const result = spawnSync('bash', [script, cachePath], {

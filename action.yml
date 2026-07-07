@@ -50,6 +50,24 @@ runs:
       with:
         short-length: ${{ inputs.short-length }}
 
+    # macOS runners checkout onto case-insensitive APFS: with fetch-depth 0, two branches
+    # whose names differ only in case (Adelphi-Liong/feat-1 vs adelphi-liong/feat-2) collide
+    # as loose-ref files and corrupt the checkout. reftable stores refs in binary tables —
+    # no per-ref files, no collisions. Pre-init so actions/checkout reuses the repo instead
+    # of running its own `git init` (needs git >= 2.45; warns and falls back otherwise).
+    - name: Pre-init repository with reftable refs (macOS)
+      if: inputs.checkout == 'true' && runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -d "$GITHUB_WORKSPACE/.git" ]; then
+          echo "repository already initialized; leaving ref format as-is"
+        elif git init --ref-format=reftable "$GITHUB_WORKSPACE" 2>/dev/null; then
+          echo "initialized $GITHUB_WORKSPACE with reftable refs"
+        else
+          echo "::warning::$(git version) lacks reftable support; loose refs may collide on case-insensitive APFS"
+        fi
+
     - name: Generate Github App Token
       uses: actions/create-github-app-token@v3
       if: inputs.auth-bot-app-id != '' && inputs.auth-bot-secret-key != ''
@@ -137,7 +155,11 @@ runs:
       uses: namespacelabs/nscloud-cache-action@v1
       if: inputs.namespacelabs == 'true' && runner.os == 'Linux'
       with:
-        path: /nix
+        # ~/.cache/nix holds the flake eval cache — persisting it lets repeat
+        # `nix develop`/`nix eval` invocations skip re-evaluation.
+        path: |
+          /nix
+          ~/.cache/nix
 
     # NAMESPACE LAB VERSION (macOS): the APFS root volume is sealed, so /nix cannot be a
     # mount point. Persist a local file:// binary cache on the Namespace cache volume
@@ -146,7 +168,11 @@ runs:
       uses: namespacelabs/nscloud-cache-action@v1
       if: inputs.namespacelabs == 'true' && runner.os == 'macOS'
       with:
-        path: ${{ inputs.darwin-cache-path }}
+        # ~/.cache/nix holds the flake eval cache and the flake-input fetcher cache —
+        # doubly valuable on macOS where /nix itself starts empty every run.
+        path: |
+          ${{ inputs.darwin-cache-path }}
+          ~/.cache/nix
 
     # The cache action mounts the path root-owned on macOS, but the post-push hook's
     # `nix copy` runs as the runner user and dies with EACCES ("opening file …: Permission
@@ -161,6 +187,16 @@ runs:
         set -euo pipefail
         target="$(readlink -f "$DARWIN_CACHE_PATH" 2>/dev/null || echo "$DARWIN_CACHE_PATH")"
         sudo chown -R "$USER" "$target"
+
+    # The cache action can mount ~/.cache/nix root-owned (same failure mode as the darwin
+    # cache path above); nix then silently skips writing the eval cache, wasting the mount.
+    - name: Own Nix eval cache
+      shell: bash
+      if: inputs.namespacelabs == 'true'
+      run: |
+        set -euo pipefail
+        mkdir -p "$HOME/.cache/nix"
+        sudo chown -R "$USER" "$HOME/.cache/nix"
 
     # INSTALL NIX — exactly one installer runs per (namespacelabs, os), all fed by the
     # single computed config above.

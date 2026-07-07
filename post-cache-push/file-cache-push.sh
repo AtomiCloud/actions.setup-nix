@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Discover every devShell for the current system, realize its closure (instant — the job
-# already built them), and copy the store paths into a local file:// binary cache.
+# Copy every valid store path into the local file:// binary cache.
 #
-# Discovery mirrors scripts/cache-shell.sh; kept self-contained here so the post hook has
-# no cross-directory dependencies when it runs from a workspace symlink.
+# Whole-store, not just devShell closures: build-time deps (fixed-output fetches like npm
+# tarballs) and packages built during the job are exactly what macOS re-builds from source
+# every run when they're missing from the cache. `nix copy` checks narinfos first and skips
+# paths already present, so after the first push this is incremental — new paths only.
 
 cache_path="${1:?Usage: $0 <cache-path>}"
 nix="${NIX_BIN:-nix}"
@@ -23,21 +24,6 @@ if ! touch "${cache_path}/nar/.write-probe" 2>/dev/null; then
 fi
 rm -f "${cache_path}/nar/.write-probe"
 
-echo "🔍 Discovering devShells for current system..."
-system="$("$nix" eval --raw --impure --expr 'builtins.currentSystem')"
-shells="$("$nix" eval --raw --impure --expr "builtins.concatStringsSep \" \" (builtins.attrNames (builtins.getFlake (toString ./.)).outputs.devShells.${system})")"
-echo "📦 Found shells: $shells"
-
-targets=""
-for shell in $shells; do
-  targets="$targets .#devShells.$system.$shell"
-done
-
-echo "🔨 Realizing closures:$targets"
-# shellcheck disable=SC2086
-paths="$("$nix" build $targets --print-out-paths --no-link)"
-
-echo "🫸 Pushing store paths to file://${cache_path}"
-# shellcheck disable=SC2086
-"$nix" copy --to "file://${cache_path}?compression=zstd" $paths
-echo "✅ Pushed devShell closures to local binary cache"
+echo "🫸 Pushing all valid store paths to file://${cache_path} (incremental)"
+"$nix" copy --all --to "file://${cache_path}?compression=zstd"
+echo "✅ Pushed store to local binary cache"
