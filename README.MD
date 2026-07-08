@@ -87,11 +87,15 @@ jobs:
 
 ### macOS checkout & case-insensitive APFS
 
-On macOS the action pre-initializes the workspace with `git init --ref-format=reftable`
-(git >= 2.45) before `actions/checkout` runs. With the default `fetch-depth: 0`, all branch
-refs are fetched; on case-insensitive APFS, two branches differing only in case
-(`Alice/feat-1` vs `alice/feat-2`) would otherwise collide as loose-ref files and corrupt
-the checkout. reftable keeps refs in binary tables, immune to filesystem casing.
+On macOS the action exports `GIT_DEFAULT_REF_FORMAT=reftable` (git >= 2.45; ignored by
+older gits) before `actions/checkout` runs, so the checkout's own `git init` creates a
+reftable repository. With the default `fetch-depth: 0`, all branch refs are fetched; on
+case-insensitive APFS, two branches differing only in case (`Alice/feat-1` vs
+`alice/feat-2`) would otherwise collide as loose-ref files and corrupt the checkout.
+reftable keeps refs in binary tables, immune to filesystem casing. (A pre-initialized
+empty repo does not work — `actions/checkout` recreates it for lack of a resolvable HEAD.)
+The variable stays exported for the rest of the job, so later `git init` calls in the same
+macOS job also default to reftable — harmless by design.
 
 ### Security trade-off
 
