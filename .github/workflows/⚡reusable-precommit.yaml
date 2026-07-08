@@ -18,9 +18,13 @@ jobs:
       - nscloud-cache-size-50gb
       - nscloud-cache-tag-${{ inputs.atomi_platform }}-${{ inputs.atomi_service }}-nix-store-cache
     steps:
-      # Setup
-      - uses: AtomiCloud/actions.setup-nix@v2
+      # Setup — dogfood the local action: `uses: ./` needs the repo present first,
+      # and pinning a released tag here is circular (a broken release would wedge
+      # the CI that gates the next release).
+      - uses: actions/checkout@v6
+      - uses: ./
         with:
+          checkout: 'false'
           attic: 'false'
       - uses: AtomiCloud/actions.cache-nuget@v1
 
