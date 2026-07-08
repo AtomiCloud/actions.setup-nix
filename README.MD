@@ -31,9 +31,11 @@ Namespace cache volume:
 2. Nix is installed via the Determinate Systems installer with
    `extra-substituters = file://<darwin-cache-path>?priority=10` (plus the usual remote
    caches), `require-sigs = false`, and `fallback = true`.
-3. At **end of job** (only on success), a bundled post hook realizes every devShell closure
-   and `nix copy`s it back into the `file://` cache. `nix copy` is incremental, so warm
-   runs cost seconds; the one-time cold push of a multi-GB closure is ~1–3 min.
+3. At **end of job** (only on success), a bundled post hook `nix copy --all`s **every valid
+   store path** — devShell closures, build-time deps (fixed-output fetches), and anything
+   built during the job — back into the `file://` cache. `nix copy` is incremental (already
+   -present paths are skipped), so warm runs cost seconds; the one-time cold push of a
+   multi-GB store is a few minutes.
 
 This write-back is automatic — callers do **not** add a trailing step.
 
@@ -71,6 +73,25 @@ jobs:
 - **Safe everywhere**: the post hook is a no-op `notice` (never a failure) on runners
   without the cache volume (e.g. `namespacelabs: 'false'`), if nix is missing, or if the
   cache path is absent/unwritable.
+
+### Other caches persisted
+
+- `~/.cache/nix` (both OSes, Namespace runners): the flake **eval cache** and flake-input
+  fetcher cache, so repeat `nix develop`/`nix eval` invocations skip re-evaluation. Note the
+  eval cache is keyed by the flake's content hash — it helps repeat invocations of the
+  *same* tree (multiple steps in a job, re-runs of a commit), not new commits.
+- `lazy-trees = true` is set wherever the **Determinate** installer runs (Namespace macOS
+  and all `namespacelabs: 'false'` paths): evaluation no longer copies/hashes the whole
+  source tree into the store. Upstream nix (Namespace Linux, cachix installer) does not
+  support the setting, so it is omitted there.
+
+### macOS checkout & case-insensitive APFS
+
+On macOS the action pre-initializes the workspace with `git init --ref-format=reftable`
+(git >= 2.45) before `actions/checkout` runs. With the default `fetch-depth: 0`, all branch
+refs are fetched; on case-insensitive APFS, two branches differing only in case
+(`Alice/feat-1` vs `alice/feat-2`) would otherwise collide as loose-ref files and corrupt
+the checkout. reftable keeps refs in binary tables, immune to filesystem casing.
 
 ### Security trade-off
 
