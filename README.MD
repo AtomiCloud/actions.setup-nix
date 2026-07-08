@@ -80,6 +80,10 @@ jobs:
   fetcher cache, so repeat `nix develop`/`nix eval` invocations skip re-evaluation. Note the
   eval cache is keyed by the flake's content hash — it helps repeat invocations of the
   *same* tree (multiple steps in a job, re-runs of a commit), not new commits.
+- `lazy-trees = true` is set wherever the **Determinate** installer runs (Namespace macOS
+  and all `namespacelabs: 'false'` paths): evaluation no longer copies/hashes the whole
+  source tree into the store. Upstream nix (Namespace Linux, cachix installer) does not
+  support the setting, so it is omitted there.
 
 ### macOS checkout & case-insensitive APFS
 

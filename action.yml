@@ -136,6 +136,15 @@ runs:
           keys="$keys $ATTIC_PUBLIC_KEY"
         fi
 
+        # Lazy trees skip copying/hashing the source tree into the store at eval
+        # time — but only Determinate Nix understands the setting, so gate it to
+        # the paths that run the Determinate installer (upstream nix on Namespace
+        # Linux would just warn, but keep the config exact).
+        lazy_trees="false"
+        if [ "$NAMESPACELABS" != "true" ] || [ "$RUNNER_OS" = "macOS" ]; then
+          lazy_trees="true"
+        fi
+
         {
           echo "config<<__ATOMI_NIXCONF__"
           echo "fallback = true"
@@ -144,6 +153,9 @@ runs:
           # Paths copied into the file:// cache via `nix copy` are unsigned.
           if [ "$darwin_ns" = "true" ]; then
             echo "require-sigs = false"
+          fi
+          if [ "$lazy_trees" = "true" ]; then
+            echo "lazy-trees = true"
           fi
           echo "__ATOMI_NIXCONF__"
         } >> "$GITHUB_OUTPUT"
