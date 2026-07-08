@@ -1,3 +1,17 @@
+## [3.3.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.2.0...v3.3.0) (2026-07-08)
+
+
+### 🐛 Bug Fixes 🐛
+
+* dogfood local action in own CI workflows ([d045714](https://github.com/AtomiCloud/actions.setup-nix/commit/d045714064135c122c963167bd1192fe4b0aae36))
+* dogfood local action in own CI workflows ([#19](https://github.com/AtomiCloud/actions.setup-nix/issues/19)) ([a29b828](https://github.com/AtomiCloud/actions.setup-nix/commit/a29b82843b84d1ced3a0e66b72ab04b45751fdc8)), closes [Post-#18](https://github.com/AtomiCloud/Post-/issues/18) [#18](https://github.com/AtomiCloud/actions.setup-nix/issues/18)
+
+
+### ✨ Features ✨
+
+* determinate installer everywhere, lazy-trees on linux ([5345eac](https://github.com/AtomiCloud/actions.setup-nix/commit/5345eacd46dac949dad5a7d714d7a70638d0664f))
+* determinate installer everywhere, lazy-trees on linux ([#18](https://github.com/AtomiCloud/actions.setup-nix/issues/18)) ([416b134](https://github.com/AtomiCloud/actions.setup-nix/commit/416b13429139912df1c66aa41956c0fdde9d9507)), closes [#17](https://github.com/AtomiCloud/actions.setup-nix/issues/17)
+
 ## [3.2.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.1.2...v3.2.0) (2026-07-08)
 
 
