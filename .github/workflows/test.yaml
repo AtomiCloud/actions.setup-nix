@@ -65,3 +65,16 @@ jobs:
           set -euo pipefail
           time nix develop .#ci -c true
           time nix develop .#ci -c true
+
+      # The reftable casing fix relies on the runner's git honoring
+      # GIT_DEFAULT_REF_FORMAT (git >= 2.45) — prove it on the actual macOS image.
+      - name: Verify reftable support (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          git version
+          d="$(mktemp -d)"
+          GIT_DEFAULT_REF_FORMAT=reftable git init -q "$d/repo"
+          fmt="$(git -C "$d/repo" rev-parse --show-ref-format)"
+          echo "ref-format: $fmt"
+          [ "$fmt" = "reftable" ]
