@@ -50,18 +50,10 @@ runs:
       with:
         short-length: ${{ inputs.short-length }}
 
-    # macOS runners checkout onto case-insensitive APFS: with fetch-depth 0, two branches
-    # whose names differ only in case (Adelphi-Liong/feat-1 vs adelphi-liong/feat-2) collide
-    # as loose-ref files and corrupt the checkout. reftable stores refs in binary tables —
-    # no per-ref files, no collisions. A pre-initialized empty repo does NOT survive
-    # actions/checkout (no resolvable HEAD → "will be recreated"), so instead steer the
-    # checkout's own `git init` via GIT_DEFAULT_REF_FORMAT (git >= 2.45; older gits
-    # ignore the variable and keep loose refs).
-    - name: Default git to reftable refs (macOS)
-      if: inputs.checkout == 'true' && runner.os == 'macOS'
-      shell: bash
-      run: echo "GIT_DEFAULT_REF_FORMAT=reftable" >> "$GITHUB_ENV"
-
+    # NOTE (macOS casing): reftable refs would dodge the APFS case-collision problem,
+    # but nix reads git flakes through libgit2, which cannot open reftable repos
+    # ("unsupported extension name extensions.refstorage") — so loose refs it is, and
+    # macOS instead avoids fetching foreign branch refs altogether (see below).
     - name: Generate Github App Token
       uses: actions/create-github-app-token@v3
       if: inputs.auth-bot-app-id != '' && inputs.auth-bot-secret-key != ''
@@ -71,10 +63,17 @@ runs:
         private-key: ${{ inputs.auth-bot-secret-key }}
 
     - name: Checkout Repository With Auth Bot
-      if: inputs.checkout == 'true' && inputs.auth-bot-app-id != '' && inputs.auth-bot-secret-key != ''
+      if: inputs.checkout == 'true' && inputs.auth-bot-app-id != '' && inputs.auth-bot-secret-key != '' && runner.os != 'macOS'
       uses: actions/checkout@v6
       with:
         fetch-depth: 0
+        token: ${{ steps.app-token.outputs.token }}
+
+    - name: Checkout Repository With Auth Bot (macOS)
+      if: inputs.checkout == 'true' && inputs.auth-bot-app-id != '' && inputs.auth-bot-secret-key != '' && runner.os == 'macOS'
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 1
         token: ${{ steps.app-token.outputs.token }}
 
     - name: Checkout Config
@@ -85,10 +84,33 @@ runs:
         git config user.email auth-bot@atomi.cloud
 
     - name: Checkout Repository
-      if: inputs.checkout == 'true' && inputs.auth-bot-app-id == '' && inputs.auth-bot-secret-key == ''
+      if: inputs.checkout == 'true' && inputs.auth-bot-app-id == '' && inputs.auth-bot-secret-key == '' && runner.os != 'macOS'
       uses: actions/checkout@v6
       with:
         fetch-depth: 0
+
+    - name: Checkout Repository (macOS)
+      if: inputs.checkout == 'true' && inputs.auth-bot-app-id == '' && inputs.auth-bot-secret-key == '' && runner.os == 'macOS'
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 1
+
+    # macOS runners checkout onto case-insensitive APFS: fetch-depth 0 fetches EVERY
+    # branch ref, and two branches whose names differ only in case
+    # (Adelphi-Liong/feat-1 vs adelphi-liong/feat-2) collide as loose-ref files and
+    # corrupt the checkout. So on macOS: shallow single-ref checkout above, then deepen
+    # ONLY the current ref (full history) and grab tags — foreign branch refs are never
+    # written, so they can never collide.
+    - name: Deepen current ref (macOS)
+      if: inputs.checkout == 'true' && runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+          git fetch --unshallow --tags origin "$(git rev-parse HEAD)"
+        else
+          git fetch --tags origin "$(git rev-parse HEAD)"
+        fi
 
     # COMPUTE NIX CONFIG
     # One source of truth for substituters / trusted-public-keys, consumed by whichever
