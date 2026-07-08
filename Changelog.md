@@ -1,3 +1,11 @@
+## [3.3.1](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.3.0...v3.3.1) (2026-07-08)
+
+
+### 🐛 Bug Fixes 🐛
+
+* reftable via GIT_DEFAULT_REF_FORMAT, not pre-init ([a706bd6](https://github.com/AtomiCloud/actions.setup-nix/commit/a706bd6ce88e35c6860cd6a8d14c15f0f6510cd3))
+* reftable via GIT_DEFAULT_REF_FORMAT, not pre-init ([#20](https://github.com/AtomiCloud/actions.setup-nix/issues/20)) ([e4ada30](https://github.com/AtomiCloud/actions.setup-nix/commit/e4ada300891006474e6ab68a9e0d0ed1d9909f5f)), closes [#17](https://github.com/AtomiCloud/actions.setup-nix/issues/17)
+
 ## [3.3.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.2.0...v3.3.0) (2026-07-08)
 
 
