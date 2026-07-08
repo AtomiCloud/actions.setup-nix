@@ -1,3 +1,17 @@
+## [3.2.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.1.2...v3.2.0) (2026-07-08)
+
+
+### 🐛 Bug Fixes 🐛
+
+* set origin remote in reftable pre-init so checkout reuses the repo ([5cbfc63](https://github.com/AtomiCloud/actions.setup-nix/commit/5cbfc6348513b269b40ce5d1a95dc4591550a514))
+* whole-store darwin push, eval-cache persist, reftable checkout ([9464eff](https://github.com/AtomiCloud/actions.setup-nix/commit/9464effeecab8fea301cea2fa2250e3f64bb2659))
+
+
+### ✨ Features ✨
+
+* enable lazy-trees on Determinate Nix paths ([37e14c2](https://github.com/AtomiCloud/actions.setup-nix/commit/37e14c279b5111506371d4d7c6266e68b6ceb012))
+* lazy-trees, whole-store darwin push, eval cache, reftable ([#17](https://github.com/AtomiCloud/actions.setup-nix/issues/17)) ([6ab3aee](https://github.com/AtomiCloud/actions.setup-nix/commit/6ab3aee5131121c5c9303e68c7be9513702c1b2a))
+
 ## [3.1.2](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.1.1...v3.1.2) (2026-06-12)
 
 
