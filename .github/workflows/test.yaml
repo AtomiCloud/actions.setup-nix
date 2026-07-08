@@ -66,15 +66,15 @@ jobs:
           time nix develop .#ci -c true
           time nix develop .#ci -c true
 
-      # The reftable casing fix relies on the runner's git honoring
-      # GIT_DEFAULT_REF_FORMAT (git >= 2.45) — prove it on the actual macOS image.
-      - name: Verify reftable support (macOS)
+      # Regression guard for the macOS checkout: the workspace must be a loose-ref
+      # repo (nix reads git flakes via libgit2, which cannot open reftable), and nix
+      # must be able to read it as a git flake.
+      - name: Verify workspace is nix-readable git (macOS)
         if: runner.os == 'macOS'
         run: |
           set -euo pipefail
-          git version
-          d="$(mktemp -d)"
-          GIT_DEFAULT_REF_FORMAT=reftable git init -q "$d/repo"
-          fmt="$(git -C "$d/repo" rev-parse --show-ref-format)"
+          fmt="$(git rev-parse --show-ref-format)"
           echo "ref-format: $fmt"
-          [ "$fmt" = "reftable" ]
+          [ "$fmt" = "files" ]
+          nix flake metadata "git+file://$PWD" > /dev/null
+          echo "nix can read the workspace flake"
