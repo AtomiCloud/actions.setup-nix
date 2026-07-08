@@ -1,0 +1,67 @@
+name: Test
+
+on:
+  push:
+
+jobs:
+  test:
+    name: Test (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Namespace Linux amd64
+            runner:
+              - nscloud-ubuntu-22.04-amd64-4x8-with-cache
+              - nscloud-cache-size-50gb
+              - nscloud-cache-tag-actions-setup-nix-nix-store-cache
+            namespacelabs: 'true'
+          - name: Namespace Linux arm64
+            runner:
+              - nscloud-ubuntu-22.04-arm64-4x8-with-cache
+              - nscloud-cache-size-50gb
+              - nscloud-cache-tag-actions-setup-nix-arm64-nix-store-cache
+            namespacelabs: 'true'
+          - name: Namespace macOS arm64
+            runner:
+              - nscloud-macos-sequoia-arm64-6x14-with-cache
+              - nscloud-cache-size-50gb
+              - nscloud-cache-tag-atomi-nix-darwin-cache
+            namespacelabs: 'true'
+          - name: GitHub Linux amd64
+            runner:
+              - ubuntu-latest
+            namespacelabs: 'false'
+          - name: GitHub Linux arm64
+            runner:
+              - ubuntu-24.04-arm
+            namespacelabs: 'false'
+          - name: GitHub macOS arm64
+            runner:
+              - macos-latest
+            namespacelabs: 'false'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      # uses: ./ needs the repo present before the action runs, so check out here
+      # and disable the action's own checkout.
+      - uses: actions/checkout@v6
+      - uses: ./
+        with:
+          checkout: 'false'
+          namespacelabs: ${{ matrix.namespacelabs }}
+
+      - name: Verify Determinate Nix + lazy-trees
+        run: |
+          set -euo pipefail
+          nix --version
+          nix --version | grep -q "Determinate Nix"
+          lazy="$(nix config show lazy-trees)"
+          echo "lazy-trees = $lazy"
+          [ "$lazy" = "true" ]
+
+      - name: Time devshell evals (2nd should be eval-cache warm)
+        run: |
+          set -euo pipefail
+          time nix develop .#ci -c true
+          time nix develop .#ci -c true

@@ -136,15 +136,6 @@ runs:
           keys="$keys $ATTIC_PUBLIC_KEY"
         fi
 
-        # Lazy trees skip copying/hashing the source tree into the store at eval
-        # time — but only Determinate Nix understands the setting, so gate it to
-        # the paths that run the Determinate installer (upstream nix on Namespace
-        # Linux would just warn, but keep the config exact).
-        lazy_trees="false"
-        if [ "$NAMESPACELABS" != "true" ] || [ "$RUNNER_OS" = "macOS" ]; then
-          lazy_trees="true"
-        fi
-
         {
           echo "config<<__ATOMI_NIXCONF__"
           echo "fallback = true"
@@ -154,9 +145,10 @@ runs:
           if [ "$darwin_ns" = "true" ]; then
             echo "require-sigs = false"
           fi
-          if [ "$lazy_trees" = "true" ]; then
-            echo "lazy-trees = true"
-          fi
+          # Lazy trees skip copying/hashing the source tree into the store at
+          # eval time. Determinate Nix runs on every path now, so this is safe
+          # unconditionally.
+          echo "lazy-trees = true"
           echo "__ATOMI_NIXCONF__"
         } >> "$GITHUB_OUTPUT"
 
@@ -214,16 +206,25 @@ runs:
         mkdir -p "$HOME/.cache/nix"
         sudo chown -R "$USER" "$HOME/.cache/nix"
 
-    # INSTALL NIX — exactly one installer runs per (namespacelabs, os), all fed by the
-    # single computed config above.
-    - name: Install Nix (Namespace Linux)
+    # INSTALL NIX — the Determinate installer runs on every path (it is the only
+    # installer that supports lazy-trees), fed by the single computed config above.
+    #
+    # On Namespace Linux the warm cache volume persists the previous run's install
+    # receipt at /nix/receipt.json; the installer refuses to run when it exists
+    # ("Nix is already installed") even though this VM is fresh and still needs the
+    # daemon, /etc/nix and profiles set up. Drop the receipt (and the previous
+    # profile symlinks the installer wants to create itself) and install over the
+    # existing store — store paths and the sqlite db are untouched, which is the
+    # whole point of the volume.
+    - name: Prepare warm Nix store for installer (Namespace Linux)
+      shell: bash
       if: inputs.namespacelabs == 'true' && runner.os == 'Linux'
-      uses: cachix/install-nix-action@v31
-      with:
-        extra_nix_config: ${{ steps.nixconf.outputs.config }}
+      run: |
+        set -euo pipefail
+        sudo rm -f /nix/receipt.json
+        sudo rm -rf /nix/var/nix/profiles/default /nix/var/nix/profiles/default-*-link
 
     - name: Install Nix (Determinate Systems)
-      if: inputs.namespacelabs == 'false' || (inputs.namespacelabs == 'true' && runner.os == 'macOS')
       uses: DeterminateSystems/nix-installer-action@main
       with:
         extra-conf: ${{ steps.nixconf.outputs.config }}
