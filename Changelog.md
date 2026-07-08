@@ -1,3 +1,11 @@
+## [3.3.2](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.3.1...v3.3.2) (2026-07-08)
+
+
+### 🐛 Bug Fixes 🐛
+
+* drop reftable (breaks nix/libgit2), single-ref checkout on macOS ([0d81850](https://github.com/AtomiCloud/actions.setup-nix/commit/0d818502f5bc061f3d8f2b39f2594bdd32e5a433))
+* drop reftable (breaks nix/libgit2), single-ref checkout on macOS ([#21](https://github.com/AtomiCloud/actions.setup-nix/issues/21)) ([73f30fb](https://github.com/AtomiCloud/actions.setup-nix/commit/73f30fb43f18dcdac02c7ed6e9b9244e7d8b4418))
+
 ## [3.3.1](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.3.0...v3.3.1) (2026-07-08)
 
 
