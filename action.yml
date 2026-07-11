@@ -248,14 +248,10 @@ runs:
               sudo /System/Library/Filesystems/apfs.fs/Contents/Resources/apfs.util -t / 2>/dev/null || true
           fi
           if [ -d /nix ] && sudo hdiutil attach -mountpoint /nix -nobrowse -owners on "$img" >/dev/null; then
-            if [ -d /nix/store ] && sudo sqlite3 /nix/var/nix/db/db.sqlite 'PRAGMA quick_check;' 2>/dev/null | grep -q '^ok$'; then
+            if [ -d /nix/store ] && [ -x /nix/var/nix/profiles/default/bin/nix-daemon ] &&
+              sudo sqlite3 /nix/var/nix/db/db.sqlite 'PRAGMA quick_check;' 2>/dev/null | grep -q '^ok$'; then
               echo "✅ store image attached at /nix"
               attached=true
-              # Same trick as the Linux warm volume: the previous run's receipt
-              # would make the installer refuse; the installer still needs to set
-              # up the daemon and /etc/nix on this fresh VM.
-              sudo rm -f /nix/receipt.json
-              sudo rm -rf /nix/var/nix/profiles/default /nix/var/nix/profiles/default-*-link
             else
               echo "::warning::store image failed verification; discarding it"
               sudo hdiutil detach /nix -force >/dev/null 2>&1 || true
@@ -291,10 +287,76 @@ runs:
         sudo rm -f /nix/receipt.json
         sudo rm -rf /nix/var/nix/profiles/default /nix/var/nix/profiles/default-*-link
 
+    # When the store image is attached, the installer must NOT run — it creates its
+    # own APFS volume and mounts it over /nix, shadowing the image (observed). The
+    # bootstrap below replaces it, which also removes its ~60s from the warm path.
     - name: Install Nix (Determinate Systems)
+      if: steps.niximg.outputs.attached != 'true'
       uses: DeterminateSystems/nix-installer-action@main
       with:
         extra-conf: ${{ steps.nixconf.outputs.config }}
+
+    - name: Bootstrap Nix from store image (macOS)
+      shell: bash
+      if: steps.niximg.outputs.attached == 'true'
+      env:
+        NIX_CONF: ${{ steps.nixconf.outputs.config }}
+      run: |
+        set -euo pipefail
+        profile=/nix/var/nix/profiles/default
+
+        # nix.conf — same computed config the installer would have received.
+        sudo mkdir -p /etc/nix
+        {
+          echo "build-users-group = nixbld"
+          echo "experimental-features = nix-command flakes"
+          printf '%s\n' "$NIX_CONF"
+        } | sudo tee /etc/nix/nix.conf >/dev/null
+
+        # Build users: the fresh VM has none; the daemon refuses to build without
+        # them. 8 is plenty for CI.
+        if ! dscl . -read /Groups/nixbld >/dev/null 2>&1; then
+          sudo dscl . -create /Groups/nixbld PrimaryGroupID 30000
+          for i in $(seq 1 8); do
+            sudo dscl . -create "/Users/_nixbld$i" UniqueID $((30000 + i))
+            sudo dscl . -create "/Users/_nixbld$i" PrimaryGroupID 30000
+            sudo dscl . -create "/Users/_nixbld$i" UserShell /usr/bin/false
+            sudo dscl . -create "/Users/_nixbld$i" NFSHomeDirectory /var/empty
+            sudo dscl . -append /Groups/nixbld GroupMembership "_nixbld$i"
+          done
+        fi
+
+        # Plain nix-daemon from the image's profile (no determinate-nixd supervisor
+        # on this path — the standard daemon socket is all the client needs).
+        sudo tee /Library/LaunchDaemons/org.nixos.nix-daemon.plist >/dev/null <<PLIST
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+          <key>Label</key><string>org.nixos.nix-daemon</string>
+          <key>ProgramArguments</key>
+          <array><string>${profile}/bin/nix-daemon</string></array>
+          <key>KeepAlive</key><true/>
+          <key>EnvironmentVariables</key>
+          <dict>
+            <key>NIX_SSL_CERT_FILE</key><string>/etc/ssl/cert.pem</string>
+            <key>PATH</key><string>${profile}/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+          </dict>
+        </dict>
+        </plist>
+        PLIST
+        sudo launchctl load -w /Library/LaunchDaemons/org.nixos.nix-daemon.plist
+
+        for _ in $(seq 1 30); do
+          [ -S /nix/var/nix/daemon-socket/socket ] && break
+          sleep 1
+        done
+        [ -S /nix/var/nix/daemon-socket/socket ] || { echo "::error::nix-daemon socket never appeared"; exit 1; }
+
+        echo "${profile}/bin" >> "$GITHUB_PATH"
+        echo "NIX_SSL_CERT_FILE=/etc/ssl/cert.pem" >> "$GITHUB_ENV"
+        "$profile/bin/nix" --version
+        echo "✅ nix bootstrapped from store image (no installer)"
 
     # AUTOMATIC WRITE-BACK (Namespace macOS): register a post hook that pushes the realized
     # devShell closures back to the file:// cache at end of job (only on success). Composite
