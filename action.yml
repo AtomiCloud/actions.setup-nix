@@ -224,6 +224,52 @@ runs:
         mkdir -p "$HOME/.cache/nix"
         sudo chown -R "$USER" "$HOME/.cache/nix"
 
+    # STORE IMAGE (Namespace macOS): a persisted APFS sparse image on the cache volume
+    # IS the nix store. Attaching it at /nix (~1s) replaces the multi-GB NAR unpack
+    # that otherwise dominates warm macOS jobs. Every failure path discards the image
+    # and falls back to the plain file:// substitution flow — and Namespace commits
+    # the volume only on job success, so a crashed job's dirty image dies with its
+    # fork instead of propagating.
+    - name: Attach Nix store image (macOS)
+      id: niximg
+      shell: bash
+      if: inputs.namespacelabs == 'true' && runner.os == 'macOS'
+      env:
+        DARWIN_CACHE_PATH: ${{ inputs.darwin-cache-path }}
+      run: |
+        set -euo pipefail
+        img="${DARWIN_CACHE_PATH}/nix-store.sparseimage"
+        attached=false
+        if [ -f "$img" ]; then
+          # /nix must exist on the sealed root before anything can mount there.
+          if [ ! -d /nix ]; then
+            printf 'nix\n' | sudo tee -a /etc/synthetic.conf >/dev/null
+            sudo /System/Library/Filesystems/apfs.fs/Contents/Resources/apfs.util -B / 2>/dev/null ||
+              sudo /System/Library/Filesystems/apfs.fs/Contents/Resources/apfs.util -t / 2>/dev/null || true
+          fi
+          if [ -d /nix ] && sudo hdiutil attach -mountpoint /nix -nobrowse -owners on "$img" >/dev/null; then
+            if [ -d /nix/store ] && sudo sqlite3 /nix/var/nix/db/db.sqlite 'PRAGMA quick_check;' 2>/dev/null | grep -q '^ok$'; then
+              echo "✅ store image attached at /nix"
+              attached=true
+              # Same trick as the Linux warm volume: the previous run's receipt
+              # would make the installer refuse; the installer still needs to set
+              # up the daemon and /etc/nix on this fresh VM.
+              sudo rm -f /nix/receipt.json
+              sudo rm -rf /nix/var/nix/profiles/default /nix/var/nix/profiles/default-*-link
+            else
+              echo "::warning::store image failed verification; discarding it"
+              sudo hdiutil detach /nix -force >/dev/null 2>&1 || true
+              rm -f "$img"
+            fi
+          else
+            echo "::warning::store image could not be attached; discarding it"
+            rm -f "$img"
+          fi
+        else
+          echo "no store image yet; post hook will create one"
+        fi
+        echo "attached=$attached" >> "$GITHUB_OUTPUT"
+
     # INSTALL NIX — the Determinate installer runs on every path (it is the only
     # installer that supports lazy-trees), fed by the single computed config above.
     #

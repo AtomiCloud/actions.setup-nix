@@ -27,3 +27,46 @@ rm -f "${cache_path}/nar/.write-probe"
 echo "🫸 Pushing all valid store paths to file://${cache_path} (incremental)"
 "$nix" copy --all --to "file://${cache_path}?compression=zstd"
 echo "✅ Pushed store to local binary cache"
+
+# STORE IMAGE MAINTENANCE (macOS only; no-op elsewhere). The image on the cache
+# volume is the fast path for the next job; the file:// cache above remains the
+# fallback that can always rebuild it.
+[ "$(uname)" = "Darwin" ] || exit 0
+img="${cache_path}/nix-store.sparseimage"
+
+stop_daemon() {
+  sudo launchctl bootout system/org.nixos.nix-daemon 2>/dev/null ||
+    sudo launchctl unload /Library/LaunchDaemons/org.nixos.nix-daemon.plist 2>/dev/null || true
+}
+
+if mount | grep -q ' on /nix '; then
+  # Image-backed store: stop the daemon (its binaries live inside the image) and
+  # detach cleanly so the committed image is consistent.
+  echo "🪂 Detaching store image"
+  stop_daemon
+  sync
+  sudo hdiutil detach /nix >/dev/null 2>&1 || sudo hdiutil detach /nix -force >/dev/null 2>&1 ||
+    echo "::warning::could not detach /nix; image may not be committed cleanly" >&2
+  echo "✅ Store image detached"
+elif [ ! -f "$img" ] && [ -d /nix/store ]; then
+  # No image yet: build one from the live store so the NEXT run can attach
+  # instead of unpacking. One-time local copy at NVMe speed.
+  echo "🏗️ Creating store image from live /nix"
+  stop_daemon
+  tmp_mnt="$(mktemp -d)"
+  if hdiutil create -type SPARSE -fs 'Case-sensitive APFS' -size 45g -volname NixStore "$img" >/dev/null &&
+    sudo hdiutil attach -mountpoint "$tmp_mnt" -nobrowse -owners on "$img" >/dev/null; then
+    if sudo rsync -a /nix/ "$tmp_mnt/"; then
+      echo "✅ Store image populated ($(du -h "$img" | cut -f1))"
+    else
+      echo "::warning::store image population failed; removing partial image" >&2
+      sudo hdiutil detach "$tmp_mnt" -force >/dev/null 2>&1 || true
+      rm -f "$img"
+      exit 0
+    fi
+    sudo hdiutil detach "$tmp_mnt" >/dev/null 2>&1 || sudo hdiutil detach "$tmp_mnt" -force >/dev/null 2>&1 || true
+  else
+    echo "::warning::could not create/attach store image; skipping" >&2
+    rm -f "$img"
+  fi
+fi
