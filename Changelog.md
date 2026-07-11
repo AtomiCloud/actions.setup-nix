@@ -1,3 +1,11 @@
+## [3.5.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.4.1...v3.5.0) (2026-07-11)
+
+
+### ✨ Features ✨
+
+* enable attic reads by default ([e9df216](https://github.com/AtomiCloud/actions.setup-nix/commit/e9df2163e81177509f00a377d3529df4bff848fa))
+* enable attic reads by default ([#24](https://github.com/AtomiCloud/actions.setup-nix/issues/24)) ([e4e8b42](https://github.com/AtomiCloud/actions.setup-nix/commit/e4e8b422deccba48a329ddb1b3d0149eaef2ae33))
+
 ## [3.4.1](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.4.0...v3.4.1) (2026-07-11)
 
 
