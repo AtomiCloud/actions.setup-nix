@@ -1,3 +1,11 @@
+## [3.4.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.3.2...v3.4.0) (2026-07-11)
+
+
+### ✨ Features ✨
+
+* point attic at primordial, split push/pull endpoints ([4447d2b](https://github.com/AtomiCloud/actions.setup-nix/commit/4447d2bfbb2489c7a5f73dcd10aa2acaa0bdac90))
+* point attic at primordial, split push/pull endpoints ([#22](https://github.com/AtomiCloud/actions.setup-nix/issues/22)) ([e36e401](https://github.com/AtomiCloud/actions.setup-nix/commit/e36e401b2619440f5f1f64c1caee04bb45ba6aa1))
+
 ## [3.3.2](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.3.1...v3.3.2) (2026-07-08)
 
 
