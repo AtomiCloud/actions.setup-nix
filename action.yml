@@ -20,8 +20,8 @@ inputs:
     default: ''
     description: Private key for auth bot
   attic:
-    default: 'false'
-    description: 'Configure attic as substituters'
+    default: 'true'
+    description: 'Configure attic as a substituter. Reads need no token (the cache is public); pushes additionally require attic-token.'
   attic-user:
     default: 'primordial'
     description: 'Local server alias used by `attic login`'
