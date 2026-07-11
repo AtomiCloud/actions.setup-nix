@@ -1,3 +1,11 @@
+## [3.4.1](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.4.0...v3.4.1) (2026-07-11)
+
+
+### 🐛 Bug Fixes 🐛
+
+* prioritize attic ahead of cache.nixos.org ([8a10d16](https://github.com/AtomiCloud/actions.setup-nix/commit/8a10d167b8693eed7c82165925ac9d81931a303e))
+* prioritize attic ahead of cache.nixos.org ([#23](https://github.com/AtomiCloud/actions.setup-nix/issues/23)) ([e44ab9d](https://github.com/AtomiCloud/actions.setup-nix/commit/e44ab9d8f2c6731d653f25b871b442a92768cba7))
+
 ## [3.4.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.3.2...v3.4.0) (2026-07-11)
 
 
