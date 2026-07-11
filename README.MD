@@ -50,7 +50,9 @@ On top of the `file://` cache, the action maintains an APFS sparse image
   plain substitution flow.
 - **Detach** (job end, success only): the daemon is stopped and the image detached cleanly
   before the volume commits. Namespace commits volumes only on success, so a crashed job's
-  dirty image dies with its fork — corruption cannot propagate.
+  dirty image dies with its fork. The one remaining path to committing a dirty image — a
+  successful job whose detach fails — poisons the image with a `.dirty` marker, and the
+  next run discards and rebuilds it instead of attaching.
 - **Bootstrap**: when no image exists, the post hook creates one from the live store
   (one-time `rsync` at NVMe speed); the next run attaches it.
 - The `file://` binary cache stays authoritative as the fallback that can always rebuild

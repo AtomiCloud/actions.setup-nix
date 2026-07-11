@@ -43,13 +43,20 @@ stop_daemon() {
 # attach step knows which; it exports ATOMI_NIX_IMAGE_ATTACHED via GITHUB_ENV.
 if [ "${ATOMI_NIX_IMAGE_ATTACHED:-false}" = "true" ]; then
   # Image-backed store: stop the daemon (its binaries live inside the image) and
-  # detach cleanly so the committed image is consistent.
+  # detach cleanly so the committed image is consistent. A failed detach poisons
+  # the image with a marker — the job still succeeds and commits, but the next
+  # run's attach step sees the marker and discards the image instead of trusting
+  # a possibly-dirty filesystem.
   echo "🪂 Detaching store image"
   stop_daemon
   sync
-  sudo hdiutil detach /nix >/dev/null 2>&1 || sudo hdiutil detach /nix -force >/dev/null 2>&1 ||
-    echo "::warning::could not detach /nix; image may not be committed cleanly" >&2
-  echo "✅ Store image detached"
+  if sudo hdiutil detach /nix >/dev/null 2>&1 || sudo hdiutil detach /nix -force >/dev/null 2>&1; then
+    rm -f "${img}.dirty"
+    echo "✅ Store image detached"
+  else
+    touch "${img}.dirty"
+    echo "::warning::could not detach /nix; poisoned the image so the next run rebuilds it" >&2
+  fi
 elif [ ! -f "$img" ] && [ -d /nix/store ]; then
   # No image yet: build one from the live store so the NEXT run can attach
   # instead of unpacking. One-time local copy at NVMe speed.
@@ -58,7 +65,7 @@ elif [ ! -f "$img" ] && [ -d /nix/store ]; then
   tmp_mnt="$(mktemp -d)"
   if hdiutil create -type SPARSE -fs 'Case-sensitive APFS' -size 45g -volname NixStore "$img" >/dev/null &&
     sudo hdiutil attach -mountpoint "$tmp_mnt" -nobrowse -owners on "$img" >/dev/null; then
-    if sudo rsync -a /nix/ "$tmp_mnt/"; then
+    if sudo rsync -aH /nix/ "$tmp_mnt/"; then
       echo "✅ Store image populated ($(du -h "$img" | cut -f1))"
     else
       echo "::warning::store image population failed; removing partial image" >&2

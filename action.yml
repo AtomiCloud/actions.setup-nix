@@ -240,6 +240,12 @@ runs:
         set -euo pipefail
         img="${DARWIN_CACHE_PATH}/nix-store.sparseimage"
         attached=false
+        # A poison marker means the previous run could not detach cleanly — the
+        # committed image may be dirty; rebuild it rather than trust it.
+        if [ -f "${img}.dirty" ]; then
+          echo "::warning::store image is marked dirty (unclean detach); discarding it"
+          rm -f "$img" "${img}.dirty"
+        fi
         if [ -f "$img" ]; then
           # /nix must exist on the sealed root before anything can mount there.
           if [ ! -d /nix ]; then
