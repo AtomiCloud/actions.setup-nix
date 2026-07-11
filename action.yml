@@ -269,6 +269,9 @@ runs:
           echo "no store image yet; post hook will create one"
         fi
         echo "attached=$attached" >> "$GITHUB_OUTPUT"
+        # The post hook must distinguish image-backed /nix from the installer's own
+        # APFS volume (both are mounts) — tell it explicitly.
+        echo "ATOMI_NIX_IMAGE_ATTACHED=$attached" >> "$GITHUB_ENV"
 
     # INSTALL NIX — the Determinate installer runs on every path (it is the only
     # installer that supports lazy-trees), fed by the single computed config above.

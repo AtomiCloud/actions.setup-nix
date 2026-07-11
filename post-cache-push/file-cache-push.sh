@@ -39,7 +39,9 @@ stop_daemon() {
     sudo launchctl unload /Library/LaunchDaemons/org.nixos.nix-daemon.plist 2>/dev/null || true
 }
 
-if mount | grep -q ' on /nix '; then
+# /nix is a mount either way (the installer's APFS volume or our image) — only the
+# attach step knows which; it exports ATOMI_NIX_IMAGE_ATTACHED via GITHUB_ENV.
+if [ "${ATOMI_NIX_IMAGE_ATTACHED:-false}" = "true" ]; then
   # Image-backed store: stop the daemon (its binaries live inside the image) and
   # detach cleanly so the committed image is consistent.
   echo "🪂 Detaching store image"
