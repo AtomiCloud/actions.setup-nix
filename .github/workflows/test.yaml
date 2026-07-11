@@ -26,7 +26,10 @@ jobs:
             runner:
               - nscloud-macos-sequoia-arm64-6x14-with-cache
               - nscloud-cache-size-50gb
-              - nscloud-cache-tag-atomi-nix-darwin-cache
+              # Dedicated single-writer tag: on the shared darwin volume, commits from
+              # other org jobs race the store image while it rolls out, making the
+              # attach path impossible to exercise deterministically in CI.
+              - nscloud-cache-tag-actions-setup-nix-darwin-test
             namespacelabs: 'true'
           - name: GitHub Linux amd64
             runner:

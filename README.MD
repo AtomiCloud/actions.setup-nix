@@ -39,6 +39,25 @@ Namespace cache volume:
 
 This write-back is automatic — callers do **not** add a trailing step.
 
+### Store image fast path (macOS)
+
+On top of the `file://` cache, the action maintains an APFS sparse image
+(`<darwin-cache-path>/nix-store.sparseimage`) that **is** a ready-to-use `/nix`:
+
+- **Attach** (job start): if the image exists and passes verification (`sqlite quick_check`
+  on the nix db), it is mounted at `/nix` in ~1s — replacing the multi-GB NAR unpack that
+  otherwise dominates warm macOS jobs. Any failure discards the image and falls back to the
+  plain substitution flow.
+- **Detach** (job end, success only): the daemon is stopped and the image detached cleanly
+  before the volume commits. Namespace commits volumes only on success, so a crashed job's
+  dirty image dies with its fork. The one remaining path to committing a dirty image — a
+  successful job whose detach fails — poisons the image with a `.dirty` marker, and the
+  next run discards and rebuilds it instead of attaching.
+- **Bootstrap**: when no image exists, the post hook creates one from the live store
+  (one-time `rsync` at NVMe speed); the next run attaches it.
+- The `file://` binary cache stays authoritative as the fallback that can always rebuild
+  the image from scratch.
+
 ### Required runner labels (caller side)
 
 macOS callers need the same cache-volume label scheme Linux already requires:
