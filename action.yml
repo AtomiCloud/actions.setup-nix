@@ -23,17 +23,20 @@ inputs:
     default: 'false'
     description: 'Configure attic as substituters'
   attic-user:
-    default: 'atomicloud'
-    description: 'User for attic'
+    default: 'primordial'
+    description: 'Local server alias used by `attic login`'
   attic-url:
-    default: 'https://attic-atomicloud.fly.dev'
-    description: 'URL for attic'
+    default: 'https://attic.primordial.atomi.cloud'
+    description: 'Pull URL (Cloudflare-proxied; NARs are edge-cached)'
+  attic-push-url:
+    default: 'https://attic-direct.primordial.atomi.cloud'
+    description: 'Push URL (DNS-only, bypasses the Cloudflare 100MB request-body limit that 413s large NAR uploads)'
   attic-public-key:
-    default: 'all:uiWsynIsiSHKa2RuLZ3+8yE9lm1EVstE9RQ6RvRnVgU='
+    default: 'primordial:puK/sRe9wgfcreXNCR+rym2gwLuICwIWyAwTSG9ctkU='
     description: 'Public key for attic'
   attic-cache:
-    default: 'all'
-    description: 'Cache attic'
+    default: 'primordial'
+    description: 'Attic cache name'
   attic-token:
     default: ''
     description: 'Token for attic'
@@ -259,15 +262,19 @@ runs:
       with:
         cache-path: ${{ inputs.darwin-cache-path }}
 
-    # SETUP ATTIC
+    # SETUP ATTIC — nixpkgs' attic-client is prebuilt in cache.nixos.org; the upstream
+    # flake would compile rust from source on cold runners.
     - name: Install Attic
       shell: bash
       if: inputs.attic-token != '' && inputs.attic == 'true'
       run: |
-        nix profile install github:zhaofengli/attic#default
+        nix profile install nixpkgs#attic-client
 
+    # Login against the PUSH url: uploads must bypass the Cloudflare proxy (100MB
+    # request-body cap → 413 on large NARs). Pulls still go through the proxied
+    # attic-url substituter, where NARs are edge-cached.
     - name: Login to Attic
       shell: bash
       if: inputs.attic-token != '' && inputs.attic == 'true'
       run: |
-        attic login "${{ inputs.attic-user }}" "${{ inputs.attic-url }}" "${{ inputs.attic-token }}"
+        attic login "${{ inputs.attic-user }}" "${{ inputs.attic-push-url }}" "${{ inputs.attic-token }}"
