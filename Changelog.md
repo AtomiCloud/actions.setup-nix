@@ -1,3 +1,18 @@
+## [3.6.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.5.0...v3.6.0) (2026-07-11)
+
+
+### 🐛 Bug Fixes 🐛
+
+* bootstrap nix from image instead of running the installer ([bd3c104](https://github.com/AtomiCloud/actions.setup-nix/commit/bd3c104ac3a028e9153a848c449a165e28641ce5))
+* distinguish image mount from installer volume in post hook ([e6d8103](https://github.com/AtomiCloud/actions.setup-nix/commit/e6d81032013dca4e4183b14f0cf45aee1d5964f3))
+* preserve hardlinks in image copy, poison-marker unclean detaches ([8bb2abf](https://github.com/AtomiCloud/actions.setup-nix/commit/8bb2abf85f61ff17bb41860065a72d92e28c99a4))
+
+
+### ✨ Features ✨
+
+* sparse-image store fast path on macOS ([f8d3b9b](https://github.com/AtomiCloud/actions.setup-nix/commit/f8d3b9b5100da0b71541a7cf25fd433e4802e82f))
+* sparse-image store fast path on macOS ([#25](https://github.com/AtomiCloud/actions.setup-nix/issues/25)) ([f0a97ca](https://github.com/AtomiCloud/actions.setup-nix/commit/f0a97ca14b881e265afac2481b10018221099710)), closes [#18](https://github.com/AtomiCloud/actions.setup-nix/issues/18)
+
 ## [3.5.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.4.1...v3.5.0) (2026-07-11)
 
 
