@@ -147,7 +147,10 @@ runs:
         fi
 
         if [ "$ATTIC" = "true" ]; then
-          subs="$subs ${ATTIC_URL}/${ATTIC_CACHE}?priority=43"
+          # Priority 35: ahead of cache.nixos.org (40) — attic is a full mirror
+          # served zstd-compressed from the Cloudflare edge, which beats nixos'
+          # xz over origin for both transfer and decompress. Misses fall through.
+          subs="$subs ${ATTIC_URL}/${ATTIC_CACHE}?priority=35"
           keys="$keys $ATTIC_PUBLIC_KEY"
         fi
 
