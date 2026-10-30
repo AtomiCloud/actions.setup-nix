@@ -13,10 +13,7 @@ on:
 jobs:
   release:
     name: Semantic Release
-    runs-on:
-      - nscloud-ubuntu-22.04-amd64-4x8-with-cache
-      - nscloud-cache-size-50gb
-      - nscloud-cache-tag-${{ inputs.atomi_platform }}-${{ inputs.atomi_service }}-nix-store-cache
+    runs-on: ubuntu-24.04
     steps:
       # Setup — dogfood the local action. A plain checkout makes `uses: ./`
       # resolvable; the action then re-checkouts with the auth-bot token (full
@@ -24,12 +21,17 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./
         with:
+          namespacelabels: 'false'
           auth-bot-app-id: ${{ vars.AUTH_BOT_APP_ID }}
           auth-bot-secret-key: ${{ secrets.AUTH_BOT_SECRET_KEY }}
           attic: 'false'
 
       - uses: AtomiCloud/actions.cache-npm@v1
+        with:
+          namespacelabs: 'false'
       - uses: AtomiCloud/actions.cache-nuget@v1
+        with:
+          namespacelabs: 'false'
 
       # Release
       - name: Release
