@@ -28,6 +28,13 @@ jobs:
       # uses: ./ needs the repo present before the action runs, so check out here
       # and disable the action's own checkout.
       - uses: actions/checkout@v6
+      - name: Deepen current ref (nix needs revCount)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --unshallow --tags origin "$(git rev-parse HEAD)"
+          fi
       - uses: ./
         with:
           checkout: 'false'
