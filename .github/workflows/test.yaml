@@ -10,27 +10,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Namespace Linux amd64
-            runner:
-              - nscloud-ubuntu-22.04-amd64-4x8-with-cache
-              - nscloud-cache-size-50gb
-              - nscloud-cache-tag-actions-setup-nix-nix-store-cache
-            namespacelabs: 'true'
-          - name: Namespace Linux arm64
-            runner:
-              - nscloud-ubuntu-22.04-arm64-4x8-with-cache
-              - nscloud-cache-size-50gb
-              - nscloud-cache-tag-actions-setup-nix-arm64-nix-store-cache
-            namespacelabs: 'true'
-          - name: Namespace macOS arm64
-            runner:
-              - nscloud-macos-sequoia-arm64-6x14-with-cache
-              - nscloud-cache-size-50gb
-              # Dedicated single-writer tag: on the shared darwin volume, commits from
-              # other org jobs race the store image while it rolls out, making the
-              # attach path impossible to exercise deterministically in CI.
-              - nscloud-cache-tag-actions-setup-nix-darwin-test
-            namespacelabs: 'true'
           - name: GitHub Linux amd64
             runner:
               - ubuntu-latest
@@ -49,6 +28,13 @@ jobs:
       # uses: ./ needs the repo present before the action runs, so check out here
       # and disable the action's own checkout.
       - uses: actions/checkout@v6
+      - name: Deepen current ref (nix needs revCount)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --unshallow --tags origin "$(git rev-parse HEAD)"
+          fi
       - uses: ./
         with:
           checkout: 'false'
