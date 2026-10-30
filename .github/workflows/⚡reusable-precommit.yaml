@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./
         with:
-          namespacelabels: 'false'
+          namespacelabs: 'false'
           checkout: 'false'
           attic: 'false'
       - uses: AtomiCloud/actions.cache-nuget@v1

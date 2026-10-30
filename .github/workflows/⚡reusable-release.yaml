@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./
         with:
-          namespacelabels: 'false'
+          namespacelabs: 'false'
           auth-bot-app-id: ${{ vars.AUTH_BOT_APP_ID }}
           auth-bot-secret-key: ${{ secrets.AUTH_BOT_SECRET_KEY }}
           attic: 'false'
