@@ -21,7 +21,7 @@
 #   NIX_CONF            computed extra nix config (same text the installer receives)
 #   MAX_AGE_DAYS        refuse a snapshot older than this and reinstall (default 7), so
 #                       the Determinate Nix version still follows the installer's stable
-#   GITHUB_TOKEN_VALUE  optional; becomes `access-tokens = github.com=...` like the
+#   GITHUB_TOKEN_VALUE  optional; becomes `access-tokens = <server host>=...` like the
 #                       installer action does
 #   ATOMI_NIX_STATE_DIR / ATOMI_NIX_ETC_DIR / ATOMI_NIX_BIN_DIR override locations (tests)
 set -euo pipefail
@@ -162,7 +162,10 @@ write_custom_conf() {
   echo "# Mirrors what DeterminateSystems/nix-installer-action writes at install time."
   echo
   if [ -n "${GITHUB_TOKEN_VALUE:-}" ]; then
-    echo "access-tokens = github.com=${GITHUB_TOKEN_VALUE}"
+    tok_host="${GITHUB_SERVER_URL:-https://github.com}"
+    tok_host="${tok_host#*://}"
+    tok_host="${tok_host%%/*}"
+    echo "access-tokens = ${tok_host:-github.com}=${GITHUB_TOKEN_VALUE}"
   fi
   echo "trusted-users = root ${user}"
   if command -v jq >/dev/null 2>&1; then
@@ -200,7 +203,7 @@ spawn_daemon() {
   sudo setsid nohup "$BIN_DIR/determinate-nixd" daemon >>"$DAEMON_LOG" 2>&1 </dev/null &
   local i
   for i in $(seq 1 600); do
-    if "$PROFILE/bin/nix" store info --store daemon >/dev/null 2>&1; then
+    if timeout 5 "$PROFILE/bin/nix" store info --store daemon >/dev/null 2>&1; then
       return 0
     fi
     # Gone already? (sudo exec's the daemon, so the pattern matches only the live one)
