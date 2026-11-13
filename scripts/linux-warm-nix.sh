@@ -99,11 +99,11 @@ unsuitable() {
   # attempt, an existing build-user setup) is the installer's business: it knows how to
   # detect, refuse or repair it. We only act on a pristine machine so that rollback can
   # safely remove exactly what we created.
-  [ ! -e "$ETC_DIR/nix" ] || {
+  [ ! -e "$ETC_DIR/nix" ] && [ ! -L "$ETC_DIR/nix" ] || {
     echo "$ETC_DIR/nix already exists"
     return 0
   }
-  [ ! -e "$BIN_DIR/determinate-nixd" ] || {
+  [ ! -e "$BIN_DIR/determinate-nixd" ] && [ ! -L "$BIN_DIR/determinate-nixd" ] || {
     echo "$BIN_DIR/determinate-nixd already exists"
     return 0
   }

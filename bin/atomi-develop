@@ -137,19 +137,20 @@ run_cached() {
 if [ -f "$env_file" ] && store_paths_valid "$env_file"; then
   if [ "${ATOMI_DEVENV_VERIFY:-0}" = "1" ]; then
     fresh="$(mktemp)"
+    cmpf="$(mktemp)"
     if ! nix print-dev-env "$abs_installable" >"$fresh"; then
       log "verify: print-dev-env failed"
-      rm -f "$fresh"
+      rm -f "$fresh" "$cmpf"
       exit 97
     fi
-    grep -v -e '^export NIX_GCROOT=' -e '^# atomi-bash: ' "$env_file" >"$env_file.cmp" || true
-    if ! diff -q "$env_file.cmp" "$fresh" >/dev/null; then
+    grep -v -e '^export NIX_GCROOT=' -e '^# atomi-bash: ' "$env_file" >"$cmpf" || true
+    if ! diff -q "$cmpf" "$fresh" >/dev/null; then
       log "VERIFY FAILED: cached env differs from a fresh evaluation (key $key)"
-      diff "$env_file.cmp" "$fresh" | head -n 20 >&2
-      rm -f "$env_file.cmp" "$fresh"
+      diff "$cmpf" "$fresh" | head -n 20 >&2
+      rm -f "$cmpf" "$fresh"
       exit 97
     fi
-    rm -f "$env_file.cmp" "$fresh"
+    rm -f "$cmpf" "$fresh"
     log "verify ok"
   fi
   log "hit $key"
@@ -259,25 +260,41 @@ fi
 # `nix develop` also exports NIX_GCROOT (the dev env's own store path); print-dev-env does
 # not. Its hash prefix is the -frandom-seed, so recover the path and add it.
 seed="$(sed -n "s/.*-frandom-seed=\([a-z0-9]\{10\}\).*/\1/p" "$tmp" | head -n1)"
+gcroot=""
 if [ -n "$seed" ]; then
   # whatever the env derivation is called (a named mkShell changes the suffix)
   for g in /nix/store/"$seed"*; do
     if [ -e "$g" ]; then
-      sed -i "1i export NIX_GCROOT='$g'" "$tmp"
+      gcroot="$g"
       break
     fi
   done
 fi
+# A shell without the compiler seed (a bare derivation) gives no way to recover it: then
+# the cached run would lack the NIX_GCROOT nix develop sets, so do not cache.
+if [ -z "$gcroot" ]; then
+  log "not caching: cannot recover NIX_GCROOT"
+  fallback_clean
+fi
+sed -i "1i export NIX_GCROOT='$gcroot'" "$tmp"
 # the interactive bash `nix develop` would run the script with (see run_cached); resolved
 # like nix does, through the flake registry's nixpkgs. Cost is paid on a miss only.
 bi=""
+# nix develop takes bashInteractive from the flake's own (locked) `nixpkgs` input when it
+# has one, else from the registry's nixpkgs
+if [ "$(nix eval --impure --raw --expr "if (builtins.getFlake \"$flakedir\").inputs ? nixpkgs then \"y\" else \"n\"" 2>/dev/null)" = y ]; then
+  bi_cmd=(nix build --no-link --print-out-paths --impure --expr
+    "(builtins.getFlake \"$flakedir\").inputs.nixpkgs.legacyPackages.\${builtins.currentSystem}.bashInteractive")
+else
+  bi_cmd=(nix build --no-link --print-out-paths 'nixpkgs#bashInteractive')
+fi
 while IFS= read -r p; do
   # several outputs are printed (man, out, ...): the one holding bin/bash
   if [ -x "$p/bin/bash" ]; then
     bi="$p"
     break
   fi
-done < <(nix build --no-link --print-out-paths 'nixpkgs#bashInteractive' 2>/dev/null)
+done < <("${bi_cmd[@]}" 2>/dev/null)
 if [ -z "$bi" ]; then
   log "not caching: cannot resolve bashInteractive"
   fallback_clean
