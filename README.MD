@@ -147,3 +147,82 @@ This action is a `composite` action.
 <!-- action-docs-runs -->
 
 <!-- prettier-ignore-end -->
+
+## Faster warm jobs on Namespace Linux
+
+Three opt-out / opt-in knobs cut the fixed per-job cost. Defaults keep every existing caller
+working.
+
+**Which defaults change for existing callers?** Exactly one: on Namespace Linux runners the
+Determinate installer is no longer run when the persisted `/nix` is valid (`warm-bootstrap`,
+default `'true'`). The result is the same Determinate Nix, `nix.conf` and daemon, and any failure
+falls back to the installer. **Opt out** with `warm-bootstrap: 'false'` (the installer runs
+every job, as before). `github-slug` (default `'true'`) and `devshell-cache` (default `'false'`)
+change nothing unless a repo sets them. macOS and GitHub-hosted runners are unaffected.
+
+### Warm Nix bootstrap (automatic, `warm-bootstrap: 'true'`)
+
+On a Namespace Linux runner the cache volume persists `/nix` (the store, the db and the
+installer's receipt) but the VM is fresh, so everything the Determinate installer puts
+_outside_ `/nix` is gone. Re-running the installer to recreate it costs ~6 s. Instead:
+
+1. The **first** job (no snapshot yet) runs the installer as before and then snapshots what the
+   installer wrote outside `/nix` (`/usr/local/bin/determinate-nixd`, `/etc/nix/nix.conf`) into
+   `/nix/atomi-bootstrap` on the volume.
+2. Later jobs verify the persisted store (snapshot present and younger than
+   `warm-max-age-days`, `nix` runs, store db passes `PRAGMA quick_check`, nothing pre-installed in
+   the image), then recreate the build users, `/etc/nix/nix.conf` + `nix.custom.conf` (same computed
+   config the installer receives: substituters, keys, `lazy-trees`, `trusted-users`, `access-tokens`,
+   provenance tags), start `determinate-nixd daemon` directly (no systemd on these runners) and
+   export `PATH`. ~0.4 s.
+3. Any failure rolls back what it wrote and falls through to the installer steps. A snapshot older
+   than `warm-max-age-days` (default 7) is also refreshed by the installer so the Determinate Nix
+   version keeps following the installer's `stable`.
+
+It is the same Determinate Nix, the same `nix.conf`, the same daemon as an installer run.
+
+### `github-slug: 'false'`
+
+`rlespinasse/github-slug-action` (~1 s) exports the `GITHUB_*_SLUG` / `GITHUB_*_SHORT` variables
+that release/tagging jobs use. Plain test jobs can turn it off.
+
+### `atomi-develop`: `nix develop -c` without re-evaluating
+
+The action puts `atomi-develop` on `PATH`:
+
+```yaml
+- uses: AtomiCloud/actions.setup-nix@v3
+  with:
+    devshell-cache: 'true' # asserts the dev shell depends only on flake.nix, flake.lock, nix/** (see below)
+- run: atomi-develop .#ci -c ./scripts/ci/test.sh unit
+```
+
+`nix develop` re-evaluates the flake on every commit (the eval cache is keyed on the source tree)
+and looks up `nixpkgs#bashInteractive` through the registry. `atomi-develop` runs
+`nix print-dev-env` (the script `nix develop` itself sources) once per key and stores it under
+`/nix/atomi-devenv` on the cache volume; on a hit it sources it directly: same environment, same
+`shellHook`, no evaluation (`NIX_GCROOT` included; verified byte-for-byte against `nix develop -c env`).
+
+- **Opt-in contract (`devshell-cache: 'true'`, off by default):** the input exports
+  `ATOMI_DEVENV_CACHE=1`, only on Namespace Linux (persisted `/nix`). By setting it a repo **asserts
+  that its dev shell depends only on `flake.nix`, `flake.lock`, `nix/**` and anything listed in
+  `ATOMI_DEVENV_PATHS`**, the same contract as any `hashFiles(...)` cache key. Without it (and on every
+  other runner, and for anything the wrapper does not fully understand) it runs plain `nix develop "$@"`.
+- **Key:** nix version, architecture, effective `system`/`extra-platforms`/`NIX_CONFIG`/`NIX_PATH`, the
+  installable, the flake directory, the caller's cwd and, for `flake.nix`, `flake.lock`, `nix/**` and
+  `ATOMI_DEVENV_PATHS` (which extends, never replaces, those): file contents (symlinks followed) plus
+  every entry's type, mode and link target (so adding a directory entry or `chmod +x` changes it).
+- **Safety net, not a proof:** on a miss the wrapper also evaluates the same flake from a throw-away
+  copy that differs in everything the key does not cover (a new commit: rev, revCount, lastModified,
+  source path; and every tracked file outside the declared inputs, repo-relative so sub-directory
+  flakes are handled). If the envs differ (`self`, `src = ./.`, `self.shortRev`, a `readFile` of an
+  undeclared file ...) the env is never cached (a `.nocache` marker skips the attempt next time).
+  This catches accidental violations of the contract but cannot prove independence (e.g. arithmetic on
+  `self.revCount` that happens to agree for the probe), which is why the repo opts in explicitly and
+  `ATOMI_DEVENV_VERIFY=1` exists. `__structuredAttrs` envs, non-git flakes and anything the key
+  cannot hash are never cached either. A cached env whose store paths are no longer in the store is a
+  miss.
+- **Same semantics as `nix develop -c`:** the generated script is sourced, then the command is
+  `exec`ed unconditionally with its argv untouched (a `shellHook` that ends with a failing command does
+  not skip the command; exit codes pass through). `ATOMI_DEVENV_VERIFY=1` additionally evaluates fresh on
+  a hit and fails if the two differ; `ATOMI_DEVENV_CACHE=0` bypasses.

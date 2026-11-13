@@ -1,0 +1,375 @@
+#!/usr/bin/env bash
+# atomi-develop: `nix develop <flake>#<shell> -c <cmd...>` with the evaluated dev env cached.
+#
+#   atomi-develop .#ci -c ./scripts/ci/test.sh unit
+#
+# `nix develop` re-evaluates the flake on every commit (the eval cache is keyed on the
+# source tree) and resolves `nixpkgs#bashInteractive` through the registry, which can
+# download and unpack a nixpkgs tarball: together 5-8s before the shell hook even runs.
+# `nix print-dev-env` is the script `nix develop` itself sources; this wrapper stores it on
+# the persisted /nix volume under a key covering everything the evaluation reads, and on
+# a hit sources it directly: same env, same shellHook, no evaluation.
+#
+# It is OPT-IN and fails closed. Everything it does not fully understand runs plain
+# `nix develop "$@"`:
+#   - ATOMI_DEVENV_CACHE is not 1 (setup-nix sets it on Namespace Linux only, where the
+#     persisted /nix makes the cache meaningful and GNU userland is guaranteed)
+#   - extra flags, no `-c`, a remote flake ref, no writable cache dir, any hashing error
+#   - a dev env that depends on the flake's own source/revision (`src = self`, self.rev,
+#     lastModified ...) or on structured attrs (it references per-run temp files)
+#   - a cached env whose store paths are no longer in the store
+#
+# Environment:
+#   ATOMI_DEVENV_CACHE   must be 1 to use the cache (set by setup-nix on Namespace Linux);
+#                        0 or unset: plain nix develop
+#   ATOMI_DEVENV_DIR     cache dir (default /nix/atomi-devenv, i.e. on the cache volume)
+#   ATOMI_DEVENV_PATHS   EXTRA space separated files/dirs (relative to the flake dir) hashed
+#                        into the key on top of the mandatory flake.nix, flake.lock and nix/.
+#                        Add every other path your flake's .nix files read.
+#   ATOMI_DEVENV_VERIFY  set to 1 on a hit to also evaluate fresh and fail loudly if the
+#                        two environments differ (debugging a key that misses an input)
+#   ATOMI_DEVENV_KEEP    number of cached envs to keep (default 8)
+# Pass-through BEFORE anything else (no variable assigned, no option set, no bash feature
+# beyond POSIX): the cache is off, the arguments are not `<flake>#<shell> -c cmd...`, or
+# this bash is too old (mapfile -d needs 4.4; macOS ships 3.2). Then this is exactly
+# `nix develop "$@"`, byte for byte.
+if [ "${ATOMI_DEVENV_CACHE:-0}" != "1" ] || [ "$#" -lt 3 ] || [ "${2:-}" != "-c" ] ||
+  [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] ||
+  { [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -lt 4 ]; }; then
+  exec nix develop "$@"
+fi
+# The caller's environment, exactly as exported to this wrapper (SHELLOPTS included).
+# Everything we hand to a child (the cached bash, the later `nix develop` fall-throughs) is
+# started from this snapshot with `env -i` (the exec'd env itself starts with an empty
+# environment, so the snapshot is not counted twice against ARG_MAX), so nothing this
+# wrapper assigns or exports (its own variable names, nounset/pipefail in SHELLOPTS,
+# allexport leaking helpers) can reach a command or shellHook. It must come before any
+# variable is assigned.
+mapfile -d '' caller_env < <(env -0)
+set +a
+set -uo pipefail
+
+log() { echo "[atomi-develop] $*" >&2; }
+# shellcheck disable=SC2317  # also reached through fallback
+plain() { exec -c env -i "${caller_env[@]}" nix develop "$@"; }
+
+# Original args, for any fall-through.
+orig=("$@")
+pin=""
+run_tmp=""
+fallback() {
+  if [ -n "$pin" ]; then exec {pin}<&-; fi
+  plain "${orig[@]}"
+}
+
+[ "${ATOMI_DEVENV_CACHE:-0}" = "1" ] || fallback
+if [ "$#" -lt 3 ] || [ "${2:-}" != "-c" ]; then fallback; fi
+installable="$1"
+shift 2
+
+flakeref="${installable%%#*}"
+[ -n "$flakeref" ] || flakeref="."
+case "$flakeref" in . | ./* | ../* | /*) ;; *) fallback ;; esac
+[ -f "$flakeref/flake.nix" ] || fallback
+flakedir="$(cd "$flakeref" && pwd -P)" || fallback
+# Resolve the flake ref to an absolute path but keep evaluating from the CALLER's cwd,
+# exactly like `nix develop` does (the dev env embeds cwd-relative values such as `out`).
+if [[ "$installable" == *"#"* ]]; then
+  abs_installable="$flakedir#${installable#*#}"
+else
+  abs_installable="$flakedir"
+fi
+
+cache_dir="${ATOMI_DEVENV_DIR:-/nix/atomi-devenv}"
+if [ ! -d "$cache_dir" ]; then
+  sudo -n install -d -o "$(id -u)" "$cache_dir" 2>/dev/null || mkdir -p "$cache_dir" 2>/dev/null || true
+fi
+if [ ! -d "$cache_dir" ] || [ ! -w "$cache_dir" ]; then fallback; fi
+
+# ---- key (fail closed: any error means no cache) ------------------------------------------
+hash_inputs() {
+  nix --version || return 1
+  uname -m || return 1
+  # what the evaluation runs as: the effective system / platforms / search path / config
+  nix config show system || return 1
+  nix config show extra-platforms || return 1
+  printf '%s\n%s\n%s\n%s\n%s\n' "${NIX_CONFIG:-}" "${NIX_PATH:-}" "$installable" "$flakedir" "$PWD"
+  cd "$flakedir" || return 1
+  local p
+  # shellcheck disable=SC2086
+  for p in flake.nix flake.lock nix ${ATOMI_DEVENV_PATHS:-}; do
+    if [ -d "$p" ] || [ -L "$p" ] || [ -f "$p" ]; then
+      # contents of files and symlinks (a symlink's content is hashed through it; a dangling
+      # or directory link makes sha256sum fail, which fails the whole key) ...
+      find "$p" \( -type f -o -type l \) -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum || return 1
+      # ... plus every entry's type, mode and link target (directory entries, chmod +x)
+      find "$p" -printf '%p %y %m %l\n' | LC_ALL=C sort || return 1
+      # ... and which of them git tracks: a git flake only sees tracked files, so
+      # `git add` of an already present file changes what nix evaluates
+      git ls-files -- "$p" 2>/dev/null | LC_ALL=C sort || return 1
+    else
+      echo "absent:$p"
+    fi
+  done
+}
+key_input="$(hash_inputs)" || fallback
+[ -n "$key_input" ] || fallback
+key="$(printf '%s' "$key_input" | sha256sum | cut -c1-32)" || fallback
+[ "${#key}" -eq 32 ] || fallback
+env_file="$cache_dir/$key.sh"
+nocache_file="$cache_dir/$key.nocache"
+
+if [ -f "$nocache_file" ]; then
+  log "not cacheable ($(cat "$nocache_file")); plain nix develop"
+  fallback
+fi
+
+store_paths_valid() {
+  # Every store path the cached env mentions must still exist in the store.
+  local f="$1" p
+  while IFS= read -r p; do
+    [ -e "$p" ] || return 1
+  done < <(grep -oE '/nix/store/[a-z0-9]{32}-[A-Za-z0-9._+-]+' "$f" | sort -u)
+  return 0
+}
+
+# A bash taken from the REGISTRY's nixpkgs (the flake has no `nixpkgs` input of its own)
+# can drift from what nix develop would pick today: such entries expire after N days.
+registry_bash_fresh() {
+  local f="$1" src created max="${ATOMI_DEVENV_REGISTRY_MAX_AGE_DAYS:-7}"
+  src="$(sed -n 's/^# atomi-bash-src: //p' "$f" | head -n1)"
+  [ "$src" = registry ] || return 0
+  created="$(sed -n 's/^# atomi-created: //p' "$f" | head -n1)"
+  case "$created" in '' | *[!0-9]*) return 1 ;; esac
+  case "$max" in '' | *[!0-9]* | ??????*) max=7 ;; esac
+  [ $(($(date +%s) - created)) -le $((10#$max * 86400)) ]
+}
+
+# run_cached <fd> <cmd...>: <fd> is an already open descriptor on the cached env (opened
+# before anything else looked at the file, so pruning/replacing it concurrently cannot
+# change or break this run).
+run_cached() {
+  local fd="$1" bash_bin
+  shift
+  # The bash `nix develop` itself would use (resolved once at store time): the stdenv bash
+  # lacks programmable completion etc., so a hook that is fine under nix develop could
+  # fail under it.
+  bash_bin="$(sed -n 's/^# atomi-bash: //p' "/dev/fd/$fd" | head -n1)"
+  [ -x "$bash_bin" ] || fallback
+  # Like `nix develop`: run the generated script, THEN the command, unconditionally
+  # (a shellHook whose last command fails must not skip it; set -e inside hooks is kept).
+  # The command is spliced into the script text as shell-escaped literals, exactly how
+  # nix does it: nothing the env script can set (variables, `set --`, `shift`) can change
+  # what runs. The descriptor (allocated >= 10, so the caller's own fds stay untouched).
+  # nix develop runs the generated script as a standalone script (not sourced) from a
+  # file under TMPDIR and stays the parent until it ends, removing the file afterwards. Do
+  # the same, so a top-level `return` and $0/BASH_SOURCE (the file stays readable while the
+  # hook runs) behave the same way: the pinned env plus the literal command line become one
+  # script file `nix-shell.XXXXXX`, run by bash as a FOREGROUND child (same process group,
+  # stdin/tty untouched, signal dispositions untouched, so Ctrl-C/job control behave as with
+  # nix develop; the child's exit status, including 128+signal, is relayed unchanged), and
+  # the file is removed when that child ends. (A wrapper killed outright cannot clean up;
+  # that leaves one small file in TMPDIR on a throw-away runner.) The script closes the
+  # pinned descriptor before the command runs, so the command sees the same fds.
+  local q rc=0
+  printf -v q '%q ' "$@"
+  run_tmp="$(mktemp "${TMPDIR:-/tmp}/nix-shell.XXXXXX")" || fallback
+  trap 'rm -f -- "$run_tmp"' EXIT
+  {
+    printf 'exec %s<&-\n' "$fd"
+    cat "/dev/fd/$fd"
+    printf '\nexec %s\n' "$q"
+  } >"$run_tmp" || {
+    rm -f -- "$run_tmp"
+    fallback
+  }
+  (exec -c env -i "${caller_env[@]}" "$bash_bin" "$run_tmp") || rc=$?
+  exit "$rc"
+}
+
+if [ -f "$env_file" ] && { exec {pin}<"$env_file"; } 2>/dev/null &&
+  store_paths_valid "/dev/fd/$pin" && registry_bash_fresh "/dev/fd/$pin"; then
+  if [ "${ATOMI_DEVENV_VERIFY:-0}" = "1" ]; then
+    fresh="$(mktemp)"
+    cmpf="$(mktemp)"
+    if ! nix print-dev-env "$abs_installable" >"$fresh"; then
+      log "verify: print-dev-env failed"
+      rm -f "$fresh" "$cmpf"
+      exit 97
+    fi
+    grep -v -e '^export NIX_GCROOT=' -e '^# atomi-' "/dev/fd/$pin" >"$cmpf" || true
+    if ! diff -q "$cmpf" "$fresh" >/dev/null; then
+      log "VERIFY FAILED: cached env differs from a fresh evaluation (key $key)"
+      diff "$cmpf" "$fresh" | head -n 20 >&2
+      rm -f "$cmpf" "$fresh"
+      exit 97
+    fi
+    rm -f "$cmpf" "$fresh"
+    log "verify ok"
+  fi
+  log "hit $key"
+  touch "$env_file" 2>/dev/null || true
+  run_cached "$pin" "$@"
+fi
+if [ -n "$pin" ]; then exec {pin}<&-; fi
+
+# ---- miss: evaluate once, store, then run exactly like a hit ------------------------------
+log "miss $key (evaluating)"
+tmp="$(mktemp "$cache_dir/.tmp.XXXXXX")" || fallback
+fallback_clean() { rm -f "$tmp"; fallback; }
+trap 'rm -f "$tmp"' EXIT
+if ! nix print-dev-env "$abs_installable" >"$tmp"; then fallback_clean; fi
+
+# Refuse to cache a dev env that the key cannot describe.
+#
+# Grepping the output for revisions or paths cannot catch every use of `self` (shortRev,
+# transformed counts, conditionals, hashes), so test the property itself: evaluate the same
+# flake from a COPY that differs in everything a cache key does not cover - a new commit
+# (rev, revCount, lastModified, source path) and every tracked file outside the declared key
+# inputs changed - from the same cwd. If the two dev envs are byte-identical, the env does
+# not depend on any of that and the key (flake.nix, flake.lock, nix/**, extras) is complete.
+# Any difference, or anything that cannot be probed, means: do not cache.
+probe_dir=""
+not_cacheable() {
+  if grep -q -E 'NIX_ATTRS_(JSON|SH)_FILE' "$tmp"; then
+    echo "structured attrs (per-run temp files)"
+    return 0
+  fi
+  command -v git >/dev/null 2>&1 || {
+    echo "git missing"
+    return 0
+  }
+  local top rel head
+  top="$(git -C "$flakedir" rev-parse --show-toplevel 2>/dev/null)" || {
+    echo "not a git checkout"
+    return 0
+  }
+  head="$(git -C "$top" rev-parse HEAD 2>/dev/null)" || {
+    echo "no commits"
+    return 0
+  }
+  rel="${flakedir#"$top"}"
+  rel="${rel#/}"
+  probe_dir="$(mktemp -d)" || {
+    echo "no temp dir"
+    return 0
+  }
+  trap 'rm -rf "$probe_dir"' EXIT
+  git clone -q --local --no-checkout "$top" "$probe_dir/r" >/dev/null 2>&1 || {
+    echo "cannot clone for the probe"
+    return 0
+  }
+  (
+    set -e
+    cd "$probe_dir/r"
+    git checkout -q --detach "$head"
+    # the working tree's uncommitted tracked changes are part of what nix evaluates; stage
+    # them so files added in the original index are tracked (and perturbed) in the copy too
+    if ! git -C "$top" diff --quiet HEAD; then
+      git -C "$top" diff HEAD --binary | git apply --whitespace=nowarn
+    fi
+    git add -A
+    # change every tracked file that is NOT a declared key input (declared paths are
+    # relative to the flake dir; compare them as repo-relative paths so a subdir flake
+    # does not protect unrelated paths at the repo root)
+    declared=()
+    for d in flake.nix flake.lock nix ${ATOMI_DEVENV_PATHS:-}; do
+      declared+=("${rel:+$rel/}${d#./}")
+    done
+    while IFS= read -r -d '' f; do
+      inkey=0
+      for d in "${declared[@]}"; do
+        case "$f" in "$d" | "$d"/*) inkey=1 ;; esac
+      done
+      if [ "$inkey" = 0 ] && [ -f "$f" ] && [ ! -L "$f" ]; then
+        printf '\n# atomi-develop probe\n' >>"$f"
+      fi
+    done < <(git ls-files -z)
+    echo probe >.atomi-develop-probe
+    git add -A
+    GIT_AUTHOR_DATE="2099-01-01T00:00:00Z" GIT_COMMITTER_DATE="2099-01-01T00:00:00Z" \
+      git -c user.name=probe -c user.email=probe@invalid commit -q -m probe
+  ) >/dev/null 2>&1 || {
+    echo "cannot build the probe copy"
+    return 0
+  }
+  local probe_target="$probe_dir/r"
+  [ -z "$rel" ] || probe_target="$probe_dir/r/$rel"
+  if [[ "$installable" == *"#"* ]]; then probe_target="$probe_target#${installable#*#}"; fi
+  nix print-dev-env "$probe_target" >"$probe_dir/env.sh" 2>/dev/null || {
+    echo "the probe copy does not evaluate"
+    return 0
+  }
+  if ! diff -q "$tmp" "$probe_dir/env.sh" >/dev/null; then
+    echo "depends on the flake's own source or revision, or on files outside the key"
+    return 0
+  fi
+  return 1
+}
+if why="$(not_cacheable)"; then
+  log "not caching: $why"
+  echo "$why" >"$nocache_file" 2>/dev/null || true
+  fallback_clean
+fi
+
+# `nix develop` also exports NIX_GCROOT (the dev env's own store path); print-dev-env does
+# not. Its hash prefix is the -frandom-seed, so recover the path and add it.
+seed="$(sed -n "s/.*-frandom-seed=\([a-z0-9]\{10\}\).*/\1/p" "$tmp" | head -n1)"
+gcroot=""
+if [ -n "$seed" ]; then
+  # whatever the env derivation is called (a named mkShell changes the suffix)
+  for g in /nix/store/"$seed"*; do
+    if [ -e "$g" ]; then
+      gcroot="$g"
+      break
+    fi
+  done
+fi
+# A shell without the compiler seed (a bare derivation) gives no way to recover it: then
+# the cached run would lack the NIX_GCROOT nix develop sets, so do not cache.
+if [ -z "$gcroot" ]; then
+  log "not caching: cannot recover NIX_GCROOT"
+  fallback_clean
+fi
+sed -i "1i export NIX_GCROOT='$gcroot'" "$tmp"
+# the interactive bash `nix develop` would run the script with (see run_cached); resolved
+# like nix does, through the flake registry's nixpkgs. Cost is paid on a miss only.
+bi=""
+# nix develop takes bashInteractive from the flake's own (locked) `nixpkgs` input when it
+# has one, else from the registry's nixpkgs
+if [ "$(nix eval --impure --raw --expr "if (builtins.getFlake \"$flakedir\").inputs ? nixpkgs then \"y\" else \"n\"" 2>/dev/null)" = y ]; then
+  bash_src=input
+  bi_cmd=(nix build --no-link --print-out-paths --impure --expr
+    "(builtins.getFlake \"$flakedir\").inputs.nixpkgs.legacyPackages.\${builtins.currentSystem}.bashInteractive")
+else
+  bash_src=registry
+  bi_cmd=(nix build --no-link --print-out-paths "nixpkgs#bashInteractive")
+fi
+while IFS= read -r p; do
+  # several outputs are printed (man, out, ...): the one holding bin/bash
+  if [ -x "$p/bin/bash" ]; then
+    bi="$p"
+    break
+  fi
+done < <("${bi_cmd[@]}" 2>/dev/null)
+if [ -z "$bi" ]; then
+  log "not caching: cannot resolve bashInteractive"
+  fallback_clean
+fi
+sed -i -e "1i # atomi-created: $(date +%s)" -e "1i # atomi-bash-src: $bash_src" -e "1i # atomi-bash: $bi/bin/bash" "$tmp"
+chmod 0644 "$tmp"
+mv -f "$tmp" "$env_file"
+trap - EXIT
+# keep the newest N
+keep="${ATOMI_DEVENV_KEEP:-8}"
+[ "$keep" -ge 1 ] 2>/dev/null || keep=8
+n=0
+# the env just written is never pruned; keep the newest others up to N in total
+# shellcheck disable=SC2012
+while IFS= read -r old; do
+  [ "$old" = "$env_file" ] && continue
+  n=$((n + 1))
+  [ "$n" -lt "$keep" ] || rm -f -- "$old"
+done < <(ls -1t "$cache_dir"/*.sh 2>/dev/null)
+exec {pin}<"$env_file" || fallback
+run_cached "$pin" "$@"
