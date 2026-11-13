@@ -149,52 +149,83 @@ trap 'rm -f "$tmp"' EXIT
 if ! nix print-dev-env "$abs_installable" >"$tmp"; then fallback_clean; fi
 
 # Refuse to cache a dev env that the key cannot describe.
+#
+# Grepping the output for revisions or paths cannot catch every use of `self` (shortRev,
+# transformed counts, conditionals, hashes), so test the property itself: evaluate the same
+# flake from a COPY that differs in everything a cache key does not cover - a new commit
+# (rev, revCount, lastModified, source path) and every tracked file outside the declared key
+# inputs changed - from the same cwd. If the two dev envs are byte-identical, the env does
+# not depend on any of that and the key (flake.nix, flake.lock, nix/**, extras) is complete.
+# Any difference, or anything that cannot be probed, means: do not cache.
+probe_dir=""
+cleanup_probe() { [ -z "$probe_dir" ] || rm -rf "$probe_dir"; }
 not_cacheable() {
   if grep -q -E 'NIX_ATTRS_(JSON|SH)_FILE' "$tmp"; then
     echo "structured attrs (per-run temp files)"
     return 0
   fi
-  local meta src revs mod cnt r
-  command -v jq >/dev/null 2>&1 || {
-    echo "jq missing (cannot inspect the flake metadata)"
+  command -v git >/dev/null 2>&1 || {
+    echo "git missing"
     return 0
   }
-  meta="$(nix flake metadata --json "$flakedir" 2>/dev/null)" || {
-    echo "flake metadata unreadable"
+  local top rel head
+  top="$(git -C "$flakedir" rev-parse --show-toplevel 2>/dev/null)" || {
+    echo "not a git checkout"
     return 0
   }
-  # The flake's own source path (what `self` / `src = ./.` evaluate to). With lazy trees
-  # `flake metadata` does not list it, but getFlake's outPath is the same value `self` has.
-  # A git checkout is fetched as git+file, anything else as path: check whichever applies.
-  local ref got=0
-  for ref in "git+file://$flakedir" "path:$flakedir"; do
-    src="$(nix eval --raw --impure --expr "(builtins.getFlake \"$ref\").outPath" 2>/dev/null)" || continue
-    [ -n "$src" ] || continue
-    got=1
-    if grep -q -F "$src" "$tmp"; then
-      echo "references the flake's own source"
-      return 0
-    fi
-  done
-  if [ "$got" != 1 ]; then
-    echo "cannot determine the flake's own source path"
+  head="$(git -C "$top" rev-parse HEAD 2>/dev/null)" || {
+    echo "no commits"
     return 0
-  fi
-  revs="$(printf '%s' "$meta" | jq -r '[.locked.rev, .locked.dirtyRev, .locked.shortRev, .locked.dirtyShortRev, .revision, .dirtyRevision] | map(select(. != null and . != "")) | .[]')"
-  while IFS= read -r r; do
-    if [ -n "$r" ] && grep -q -F "$r" "$tmp"; then
-      echo "references the flake's git revision"
-      return 0
-    fi
-  done <<<"$revs"
-  mod="$(printf '%s' "$meta" | jq -r '.locked.lastModified // .lastModified // empty')"
-  if [ -n "$mod" ] && grep -q -E "(^|[^0-9])${mod}([^0-9]|$)" "$tmp"; then
-    echo "references the flake's lastModified"
+  }
+  rel="${flakedir#"$top"}"
+  rel="${rel#/}"
+  probe_dir="$(mktemp -d)" || {
+    echo "no temp dir"
     return 0
-  fi
-  cnt="$(printf '%s' "$meta" | jq -r '.locked.revCount // empty')"
-  if [ -n "$cnt" ] && grep -q -E "^[A-Za-z_][A-Za-z0-9_]*='${cnt}'\$" "$tmp"; then
-    echo "references the flake's revCount"
+  }
+  trap 'rm -rf "$probe_dir"' EXIT
+  git clone -q --local --no-checkout "$top" "$probe_dir/r" >/dev/null 2>&1 || {
+    echo "cannot clone for the probe"
+    return 0
+  }
+  (
+    set -e
+    cd "$probe_dir/r"
+    git checkout -q --detach "$head"
+    # the working tree's uncommitted tracked changes are part of what nix evaluates
+    if ! git -C "$top" diff --quiet HEAD; then
+      git -C "$top" diff HEAD --binary | git apply --whitespace=nowarn
+    fi
+    # change every tracked file that is NOT a declared key input
+    declared=" flake.nix flake.lock nix ${ATOMI_DEVENV_PATHS:-} "
+    while IFS= read -r -d '' f; do
+      inkey=0
+      sub="${f#"$rel"/}"
+      [ -z "$rel" ] && sub="$f"
+      for d in $declared; do
+        case "$sub" in "$d" | "$d"/*) inkey=1 ;; esac
+      done
+      if [ "$inkey" = 0 ] && [ -f "$f" ] && [ ! -L "$f" ]; then
+        printf '\n# atomi-develop probe\n' >>"$f"
+      fi
+    done < <(git ls-files -z)
+    echo probe >.atomi-develop-probe
+    git add -A
+    GIT_AUTHOR_DATE="2099-01-01T00:00:00Z" GIT_COMMITTER_DATE="2099-01-01T00:00:00Z" \
+      git -c user.name=probe -c user.email=probe@invalid commit -q -m probe
+  ) >/dev/null 2>&1 || {
+    echo "cannot build the probe copy"
+    return 0
+  }
+  local probe_target="$probe_dir/r"
+  [ -z "$rel" ] || probe_target="$probe_dir/r/$rel"
+  if [[ "$installable" == *"#"* ]]; then probe_target="$probe_target#${installable#*#}"; fi
+  nix print-dev-env "$probe_target" >"$probe_dir/env.sh" 2>/dev/null || {
+    echo "the probe copy does not evaluate"
+    return 0
+  }
+  if ! diff -q "$tmp" "$probe_dir/env.sh" >/dev/null; then
+    echo "depends on the flake's own source or revision, or on files outside the key"
     return 0
   fi
   return 1

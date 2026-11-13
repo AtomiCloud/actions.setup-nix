@@ -201,10 +201,14 @@ and looks up `nixpkgs#bashInteractive` through the registry. `atomi-develop` run
   content of `flake.nix`, `flake.lock` and `nix/**` (symlinks followed). If your `.nix` files read
   anything else (a `readFile`, a `src = ./x`), add it to `ATOMI_DEVENV_PATHS` (space separated,
   relative to the flake dir; it extends, never replaces, the mandatory inputs).
-- **Fails closed:** a dev env that references the flake's own source (`self`, `src = ./.`), its git
-  revision / `lastModified` / `revCount`, or that uses `__structuredAttrs` (per-run temp files) is never
-  cached (a `.nocache` marker makes later runs skip the attempt). So is anything the key cannot hash.
-  A cached env whose store paths are no longer in the store is a miss.
+- **Fails closed, by test not by guess:** on a miss the wrapper also evaluates the same flake from a
+  throw-away copy that differs in everything the key does not cover (a new commit: rev, revCount,
+  lastModified, source path; and every tracked file outside the declared key inputs). Only if the two
+  dev envs are byte-identical is the env stored; otherwise (`self`, `src = ./.`, `self.shortRev`,
+  `revCount`, a `readFile` of an undeclared file ...) it is never cached (a `.nocache` marker makes
+  later runs skip the attempt). `__structuredAttrs` envs (per-run temp files), non-git flakes and
+  anything the key cannot hash are never cached either. A cached env whose store paths are no longer
+  in the store is a miss.
 - **Same semantics as `nix develop -c`:** the generated script is sourced, then the command is
   `exec`ed unconditionally with its argv untouched (a `shellHook` that ends with a failing command does
   not skip the command; exit codes pass through). `ATOMI_DEVENV_VERIFY=1` additionally evaluates fresh on
