@@ -29,18 +29,29 @@
 #   ATOMI_DEVENV_VERIFY  set to 1 on a hit to also evaluate fresh and fail loudly if the
 #                        two environments differ (debugging a key that misses an input)
 #   ATOMI_DEVENV_KEEP    number of cached envs to keep (default 8)
+# Pass-through BEFORE anything else (no variable assigned, no option set, no bash feature
+# beyond POSIX): the cache is off, the arguments are not `<flake>#<shell> -c cmd...`, or
+# this bash is too old (mapfile -d needs 4.4; macOS ships 3.2). Then this is exactly
+# `nix develop "$@"`, byte for byte.
+if [ "${ATOMI_DEVENV_CACHE:-0}" != "1" ] || [ "$#" -lt 3 ] || [ "${2:-}" != "-c" ] ||
+  [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] ||
+  { [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -lt 4 ]; }; then
+  exec nix develop "$@"
+fi
 # The caller's environment, exactly as exported to this wrapper (SHELLOPTS included).
-# Everything we hand to a child (the cached bash, the plain `nix develop` fall-through) is
-# started from this snapshot with `env -i`, so nothing this wrapper assigns or exports
-# (its own variable names, nounset/pipefail in SHELLOPTS, allexport leaking helpers) can
-# reach a command or shellHook. It must be the very first statement, before any variable.
+# Everything we hand to a child (the cached bash, the later `nix develop` fall-throughs) is
+# started from this snapshot with `env -i` (the exec'd env itself starts with an empty
+# environment, so the snapshot is not counted twice against ARG_MAX), so nothing this
+# wrapper assigns or exports (its own variable names, nounset/pipefail in SHELLOPTS,
+# allexport leaking helpers) can reach a command or shellHook. It must come before any
+# variable is assigned.
 mapfile -d '' caller_env < <(env -0)
 set +a
 set -uo pipefail
 
 log() { echo "[atomi-develop] $*" >&2; }
 # shellcheck disable=SC2317  # also reached through fallback
-plain() { exec env -i "${caller_env[@]}" nix develop "$@"; }
+plain() { exec -c env -i "${caller_env[@]}" nix develop "$@"; }
 
 # Original args, for any fall-through.
 orig=("$@")
@@ -172,7 +183,7 @@ run_cached() {
     rm -f -- "$run_tmp"
     fallback
   }
-  env -i "${caller_env[@]}" "$bash_bin" "$run_tmp" || rc=$?
+  (exec -c env -i "${caller_env[@]}" "$bash_bin" "$run_tmp") || rc=$?
   exit "$rc"
 }
 
