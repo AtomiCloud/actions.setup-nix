@@ -436,4 +436,11 @@ runs:
     # everywhere else. See bin/atomi-develop.
     - name: Add atomi-develop to PATH
       shell: bash
-      run: echo "$GITHUB_ACTION_PATH/bin" >> "$GITHUB_PATH"
+      env:
+        CACHE_OK: ${{ inputs.namespacelabs == 'true' && runner.os == 'Linux' }}
+      run: |
+        echo "$GITHUB_ACTION_PATH/bin" >> "$GITHUB_PATH"
+        # The dev-env cache lives on the persisted /nix volume: opt in only there.
+        if [ "$CACHE_OK" = "true" ]; then
+          echo "ATOMI_DEVENV_CACHE=1" >> "$GITHUB_ENV"
+        fi

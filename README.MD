@@ -194,10 +194,18 @@ and looks up `nixpkgs#bashInteractive` through the registry. `atomi-develop` run
 `/nix/atomi-devenv` on the cache volume; on a hit it sources it directly: same environment, same
 `shellHook`, no evaluation (`NIX_GCROOT` included; verified byte-for-byte against `nix develop -c env`).
 
-- **Key:** nix version, architecture, the installable, the flake directory and the content of
-  `flake.nix`, `flake.lock` and `nix/**`. If your `.nix` files read anything else (a `readFile`, a
-  `src = ./x`), list it in `ATOMI_DEVENV_PATHS` (space separated, relative to the flake dir).
-- **Safety:** a cached env whose store paths are no longer in the store is a miss. `ATOMI_DEVENV_VERIFY=1`
-  additionally evaluates fresh on a hit and fails if the two differ. `ATOMI_DEVENV_CACHE=0` bypasses.
-- **Fallback:** anything other than `<local flake>#<shell> -c <cmd...>` (extra flags, remote flake
-  refs, no cache dir, macOS/GitHub-hosted runners) runs plain `nix develop`.
+- **Opt-in, set automatically:** the action exports `ATOMI_DEVENV_CACHE=1` only on Namespace Linux
+  (persisted `/nix`). Everywhere else, and for anything it does not fully understand, it runs plain
+  `nix develop "$@"`.
+- **Key:** nix version, architecture, the installable, the flake directory, the caller's cwd and the
+  content of `flake.nix`, `flake.lock` and `nix/**` (symlinks followed). If your `.nix` files read
+  anything else (a `readFile`, a `src = ./x`), add it to `ATOMI_DEVENV_PATHS` (space separated,
+  relative to the flake dir; it extends, never replaces, the mandatory inputs).
+- **Fails closed:** a dev env that references the flake's own source (`self`, `src = ./.`), its git
+  revision / `lastModified` / `revCount`, or that uses `__structuredAttrs` (per-run temp files) is never
+  cached (a `.nocache` marker makes later runs skip the attempt). So is anything the key cannot hash.
+  A cached env whose store paths are no longer in the store is a miss.
+- **Same semantics as `nix develop -c`:** the generated script is sourced, then the command is
+  `exec`ed unconditionally with its argv untouched (a `shellHook` that ends with a failing command does
+  not skip the command; exit codes pass through). `ATOMI_DEVENV_VERIFY=1` additionally evaluates fresh on
+  a hit and fails if the two differ; `ATOMI_DEVENV_CACHE=0` bypasses.

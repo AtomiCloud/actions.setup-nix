@@ -60,6 +60,9 @@ jobs:
         run: |
           set -euo pipefail
           norm() { sed -E 's#nix-shell\.[A-Za-z0-9]+#nix-shell.X#g; s#nix-develop-[0-9]+-[0-9]+#nix-develop.X#g' | grep -vE '^(_|SHLVL|OLDPWD)=' | sort; }
+          # The cache is opt-in (setup-nix sets this only on Namespace Linux); GitHub-hosted Linux opts in
+          # here to exercise the cached path, macOS stays on the plain `nix develop` fall-through.
+          if [ "$RUNNER_OS" = "Linux" ]; then export ATOMI_DEVENV_CACHE=1; fi
           nix develop .#ci -c env | norm > /tmp/env-nix-develop.txt
           atomi-develop .#ci -c env | norm > /tmp/env-first.txt
           atomi-develop .#ci -c env | norm > /tmp/env-second.txt
