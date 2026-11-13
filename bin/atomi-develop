@@ -36,7 +36,12 @@ plain() { exec nix develop "$@"; }
 
 # Original args, for any fall-through.
 orig=("$@")
-fallback() { plain "${orig[@]}"; }
+pin=""
+run_tmp=""
+fallback() {
+  if [ -n "$pin" ]; then exec {pin}<&-; fi
+  plain "${orig[@]}"
+}
 
 [ "${ATOMI_DEVENV_CACHE:-0}" = "1" ] || fallback
 if [ "$#" -lt 3 ] || [ "${2:-}" != "-c" ]; then fallback; fi
@@ -135,35 +140,34 @@ run_cached() {
   # Like `nix develop`: run the generated script, THEN the command, unconditionally
   # (a shellHook whose last command fails must not skip it; set -e inside hooks is kept).
   # The command is spliced into the script text as shell-escaped literals, exactly how
-  # nix does it: nothing the sourced script can set (variables, `set --`, `shift`) can
-  # change what runs. The descriptor (allocated >= 10, so the caller's own fds stay
-  # untouched) is closed again right after sourcing, so the command sees the same fds as
-  # under nix develop.
-  # nix develop runs the generated script as a standalone script (not sourced), so a
-  # top-level `return` in a shellHook behaves the same way here: the pinned env plus the
-  # literal command line become one script, held open on a descriptor and unlinked, and
-  # bash runs that. The script closes both descriptors (the pin and its own) before the
-  # command runs, so the command sees the same fds as under nix develop.
-  local q tmp sfd
+  # nix does it: nothing the env script can set (variables, `set --`, `shift`) can change
+  # what runs. The descriptor (allocated >= 10, so the caller's own fds stay untouched).
+  # nix develop runs the generated script as a standalone script (not sourced) from a
+  # file under TMPDIR, so a top-level `return` and $0/BASH_SOURCE behave the same way here:
+  # the pinned env plus the literal command line become one script file `nix-shell.XXXXXX`
+  # under TMPDIR, which deletes itself as its first action (bash keeps it open) and closes
+  # the pinned descriptor before the command runs, so the command sees the same fds as
+  # under nix develop. Until bash has started, a trap removes the file on any exit/signal.
+  local q
   printf -v q '%q ' "$@"
-  tmp="$(mktemp "${TMPDIR:-/tmp}/atomi-run.XXXXXX")" || fallback
-  cat "/dev/fd/$fd" >"$tmp" || {
-    rm -f "$tmp"
+  run_tmp="$(mktemp "${TMPDIR:-/tmp}/nix-shell.XXXXXX")" || fallback
+  trap 'rm -f -- "$run_tmp"' EXIT HUP INT TERM
+  {
+    # shellcheck disable=SC2016
+    printf 'rm -f -- "${BASH_SOURCE[0]}"\nexec %s<&-\n' "$fd"
+    cat "/dev/fd/$fd"
+    printf '\nexec %s\n' "$q"
+  } >"$run_tmp" || {
+    rm -f -- "$run_tmp"
     fallback
   }
-  exec {sfd}<"$tmp" || {
-    rm -f "$tmp"
+  # exec replaces the shell (the EXIT trap does not run then); the script removes itself
+  exec "$bash_bin" "$run_tmp" || {
+    rm -f -- "$run_tmp"
     fallback
   }
-  printf '\nexec %s<&-\nexec %s<&-\nexec %s\n' "$fd" "$sfd" "$q" >>"$tmp" || {
-    rm -f "$tmp"
-    fallback
-  }
-  rm -f "$tmp"
-  exec "$bash_bin" "/dev/fd/$sfd"
 }
 
-pin=""
 if [ -f "$env_file" ] && { exec {pin}<"$env_file"; } 2>/dev/null &&
   store_paths_valid "/dev/fd/$pin" && registry_bash_fresh "/dev/fd/$pin"; then
   if [ "${ATOMI_DEVENV_VERIFY:-0}" = "1" ]; then
