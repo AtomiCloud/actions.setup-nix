@@ -1,3 +1,32 @@
+## [3.7.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.6.0...v3.7.0) (2026-11-13)
+
+
+### 🐛 Bug Fixes 🐛
+
+* access token for the job's server host; bound the daemon readiness probe (review comments) ([c9f43a2](https://github.com/AtomiCloud/actions.setup-nix/commit/c9f43a27934a814d782fc7c973c3339f2b6fb29c))
+* atomi-develop passes the command as shell-escaped literals ([41045fa](https://github.com/AtomiCloud/actions.setup-nix/commit/41045fafc9f1f452e76b9d1b318cef65778231e9))
+* atomi-develop proves a dev env is independent of the flake source by probing a perturbed copy ([5b77d32](https://github.com/AtomiCloud/actions.setup-nix/commit/5b77d32d2e876ca490d05cf70c85071349ef8c4f))
+* atomi-develop uses nix develop's bashInteractive, keys git tracking, keeps caller fds; exact rollback and validated age ([2148695](https://github.com/AtomiCloud/actions.setup-nix/commit/21486954efec9db7a369b4302278ddebe56ea73e))
+* bash from the flake's locked nixpkgs, seedless shells uncached, dangling-symlink gating, per-call verify temp files ([ae87e21](https://github.com/AtomiCloud/actions.setup-nix/commit/ae87e21bed6af087c83c27fdc07050e239833cfd))
+* cached run uses a nix-shell.* script under TMPDIR that removes itself; fallbacks close descriptors; trap cleans interrupted runs ([bd77067](https://github.com/AtomiCloud/actions.setup-nix/commit/bd7706786b401ed5cfad6762cef862359c5625e5))
+* children get the caller's exported SHELLOPTS back (no leaked nounset/pipefail) ([6b67ea2](https://github.com/AtomiCloud/actions.setup-nix/commit/6b67ea2a3908a036f8bafa239543ef3283e3abac))
+* children start from the caller's exact environment snapshot (env -i), nothing the wrapper assigns or exports leaks ([a13a37a](https://github.com/AtomiCloud/actions.setup-nix/commit/a13a37aeef76565cdcb81f0cf4e01e7faf6f79c3))
+* devshell-cache is an explicit per-repo contract; key, probe, pruning and nixbld checks tightened ([f58a330](https://github.com/AtomiCloud/actions.setup-nix/commit/f58a330fbf8d683decc5cf3c62ce6e2caf710b4c))
+* express the pristine checks as plain ifs (shellcheck SC2015) ([1729120](https://github.com/AtomiCloud/actions.setup-nix/commit/172912070f477698100926281a3bcfccfff0fc97))
+* fail closed in atomi-develop, run warm bootstrap steps under real errexit ([1560bd1](https://github.com/AtomiCloud/actions.setup-nix/commit/1560bd1b0932ecbb56f0b80229a897fecf67a2e8))
+* pass-through before any bash feature (old bash, cache off); children launched with exec -c env -i (no ARG_MAX doubling) ([ec3eecb](https://github.com/AtomiCloud/actions.setup-nix/commit/ec3eecb86ae2de8beace5c70113e1d3f5e2f9575))
+* pin the cached env by descriptor before validating/verifying; registry-sourced bash entries expire ([1389c47](https://github.com/AtomiCloud/actions.setup-nix/commit/1389c47269bcc8362ea973126cf44c393febaa98))
+* run the cached env as a plain foreground child (no async signal/rc races), temp file removed on exit ([c4e50ed](https://github.com/AtomiCloud/actions.setup-nix/commit/c4e50ed24f3754c8d6a45f835aa77ee8e64d89be))
+* run the cached env as a standalone script like nix develop (top-level return); document default changes ([93294d3](https://github.com/AtomiCloud/actions.setup-nix/commit/93294d330e5b32a0dd94c5069adbe2043f532a54))
+* run the cached env as a supervised child like nix develop (script stays readable, signals forwarded, temp file always removed) ([6720171](https://github.com/AtomiCloud/actions.setup-nix/commit/6720171dd8d29c202fa69892d3ca33b39c039e10))
+
+
+### ✨ Features ✨
+
+* atomi-develop caches the evaluated dev shell ([311c657](https://github.com/AtomiCloud/actions.setup-nix/commit/311c6571b1678dffd4d7e2bc31f548d1bdc1d67a))
+* warm Nix bootstrap on Namespace Linux and optional github-slug ([dc86c24](https://github.com/AtomiCloud/actions.setup-nix/commit/dc86c2477b43c02d407dc4836f65376976192952))
+* warm Nix bootstrap on Namespace Linux, optional github-slug, cached dev shell ([#27](https://github.com/AtomiCloud/actions.setup-nix/issues/27)) ([ba609e7](https://github.com/AtomiCloud/actions.setup-nix/commit/ba609e73767933405f965366b1bb877095456e0b))
+
 ## [3.6.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.5.0...v3.6.0) (2026-07-11)
 
 
