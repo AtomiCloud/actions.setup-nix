@@ -139,10 +139,28 @@ run_cached() {
   # change what runs. The descriptor (allocated >= 10, so the caller's own fds stay
   # untouched) is closed again right after sourcing, so the command sees the same fds as
   # under nix develop.
-  local script q
+  # nix develop runs the generated script as a standalone script (not sourced), so a
+  # top-level `return` in a shellHook behaves the same way here: the pinned env plus the
+  # literal command line become one script, held open on a descriptor and unlinked, and
+  # bash runs that. The script closes both descriptors (the pin and its own) before the
+  # command runs, so the command sees the same fds as under nix develop.
+  local q tmp sfd
   printf -v q '%q ' "$@"
-  script="source /dev/fd/$fd; exec $fd<&-; exec $q"
-  exec "$bash_bin" -c "$script"
+  tmp="$(mktemp "${TMPDIR:-/tmp}/atomi-run.XXXXXX")" || fallback
+  cat "/dev/fd/$fd" >"$tmp" || {
+    rm -f "$tmp"
+    fallback
+  }
+  exec {sfd}<"$tmp" || {
+    rm -f "$tmp"
+    fallback
+  }
+  printf '\nexec %s<&-\nexec %s<&-\nexec %s\n' "$fd" "$sfd" "$q" >>"$tmp" || {
+    rm -f "$tmp"
+    fallback
+  }
+  rm -f "$tmp"
+  exec "$bash_bin" "/dev/fd/$sfd"
 }
 
 pin=""

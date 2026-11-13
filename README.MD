@@ -153,6 +153,13 @@ This action is a `composite` action.
 Three opt-out / opt-in knobs cut the fixed per-job cost. Defaults keep every existing caller
 working.
 
+**Which defaults change for existing callers?** Exactly one: on Namespace Linux runners the
+Determinate installer is no longer run when the persisted `/nix` is valid (`warm-bootstrap`,
+default `'true'`). The result is the same Determinate Nix, `nix.conf` and daemon, and any failure
+falls back to the installer. **Opt out** with `warm-bootstrap: 'false'` (the installer runs
+every job, as before). `github-slug` (default `'true'`) and `devshell-cache` (default `'false'`)
+change nothing unless a repo sets them. macOS and GitHub-hosted runners are unaffected.
+
 ### Warm Nix bootstrap (automatic, `warm-bootstrap: 'true'`)
 
 On a Namespace Linux runner the cache volume persists `/nix` (the store, the db and the
