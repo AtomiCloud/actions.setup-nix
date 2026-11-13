@@ -146,17 +146,16 @@ run_cached() {
   # file under TMPDIR and stays the parent until it ends, removing the file afterwards. Do
   # the same, so a top-level `return` and $0/BASH_SOURCE (the file stays readable while the
   # hook runs) behave the same way: the pinned env plus the literal command line become one
-  # script file `nix-shell.XXXXXX`, run by bash as a child (stdin/stdout/stderr passed
-  # through, TERM/INT/HUP forwarded, exit status relayed); the file is removed on every exit
-  # path. The script closes the pinned descriptor before the command runs, so the command
-  # sees the same fds as under nix develop.
-  local q rc
+  # script file `nix-shell.XXXXXX`, run by bash as a FOREGROUND child (same process group,
+  # stdin/tty untouched, signal dispositions untouched, so Ctrl-C/job control behave as with
+  # nix develop; the child's exit status, including 128+signal, is relayed unchanged), and
+  # the file is removed when that child ends. (A wrapper killed outright cannot clean up;
+  # that leaves one small file in TMPDIR on a throw-away runner.) The script closes the
+  # pinned descriptor before the command runs, so the command sees the same fds.
+  local q rc=0
   printf -v q '%q ' "$@"
   run_tmp="$(mktemp "${TMPDIR:-/tmp}/nix-shell.XXXXXX")" || fallback
   trap 'rm -f -- "$run_tmp"' EXIT
-  trap 'forward TERM 143' TERM
-  trap 'forward INT 130' INT
-  trap 'forward HUP 129' HUP
   {
     printf 'exec %s<&-\n' "$fd"
     cat "/dev/fd/$fd"
@@ -165,29 +164,9 @@ run_cached() {
     rm -f -- "$run_tmp"
     fallback
   }
-  child=""
-  "$bash_bin" "$run_tmp" <&0 &
-  child=$!
-  rc=0
-  wait "$child" || rc=$?
-  # a trapped signal makes `wait` return early: keep waiting for the real exit status
-  while kill -0 "$child" 2>/dev/null; do
-    wait "$child" || rc=$?
-  done
+  "$bash_bin" "$run_tmp" || rc=$?
   exit "$rc"
 }
-
-# signal forwarding for run_cached: before the child exists, just stop (the EXIT trap
-# removes the file); afterwards pass the signal on and let `wait` relay the child's status
-# shellcheck disable=SC2317  # invoked from traps
-forward() {
-  if [ -n "${child:-}" ]; then
-    kill -s "$1" "$child" 2>/dev/null || true
-  else
-    exit "$2"
-  fi
-}
-
 
 if [ -f "$env_file" ] && { exec {pin}<"$env_file"; } 2>/dev/null &&
   store_paths_valid "/dev/fd/$pin" && registry_bash_fresh "/dev/fd/$pin"; then
