@@ -29,10 +29,21 @@
 #   ATOMI_DEVENV_VERIFY  set to 1 on a hit to also evaluate fresh and fail loudly if the
 #                        two environments differ (debugging a key that misses an input)
 #   ATOMI_DEVENV_KEEP    number of cached envs to keep (default 8)
+# If the caller exported SHELLOPTS (e.g. `set -e; export SHELLOPTS`), the options this
+# wrapper sets for itself below would leak into every child (the cached bash and the plain
+# nix develop fall-through); children get the caller's original value back.
+envfix=()
+so_decl="$(declare -p SHELLOPTS 2>/dev/null)" || so_decl=""
+so_flags="${so_decl#declare }"
+so_flags="${so_flags%% *}"
+case "$so_flags" in
+  -*x*) envfix=(env "SHELLOPTS=$SHELLOPTS") ;;
+esac
 set -uo pipefail
 
 log() { echo "[atomi-develop] $*" >&2; }
-plain() { exec nix develop "$@"; }
+# shellcheck disable=SC2317  # also reached through fallback
+plain() { exec ${envfix[@]+"${envfix[@]}"} nix develop "$@"; }
 
 # Original args, for any fall-through.
 orig=("$@")
@@ -164,7 +175,7 @@ run_cached() {
     rm -f -- "$run_tmp"
     fallback
   }
-  "$bash_bin" "$run_tmp" || rc=$?
+  ${envfix[@]+"${envfix[@]}"} "$bash_bin" "$run_tmp" || rc=$?
   exit "$rc"
 }
 
