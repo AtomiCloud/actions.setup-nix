@@ -34,6 +34,8 @@ SOCKET="/nix/var/nix/daemon-socket/socket"
 DETSYS_DIR="/nix/var/determinate"
 DAEMON_LOG="${RUNNER_TEMP:-/tmp}/atomi-nix-daemon.log"
 MAX_AGE_DAYS="${MAX_AGE_DAYS:-7}"
+# a typo, 1.5 or 08 must never make the eligibility predicate fail or be read as octal
+case "$MAX_AGE_DAYS" in '' | *[!0-9]* | ??????*) MAX_AGE_DAYS=7 ;; esac
 NIXBLD_GID=30000
 NIXBLD_UID_BASE=30000
 NIXBLD_COUNT=32
@@ -65,7 +67,7 @@ unsuitable() {
   esac
   now="$(date +%s)"
   age=$((now - stamp))
-  if [ "$age" -lt 0 ] || [ "$age" -gt $((MAX_AGE_DAYS * 86400)) ]; then
+  if [ "$age" -lt 0 ] || [ "$age" -gt $((10#$MAX_AGE_DAYS * 86400)) ]; then
     echo "snapshot is $((age / 86400)) days old (max ${MAX_AGE_DAYS})"
     return 0
   fi
@@ -119,6 +121,8 @@ unsuitable() {
       return 0
     fi
   done
+  # Explicit verdict: a failure anywhere above must never read as "eligible".
+  echo ELIGIBLE
   return 1
 }
 
@@ -140,10 +144,14 @@ write_users() {
 }
 
 remove_users() {
-  local f
-  for f in passwd group shadow gshadow; do
-    [ ! -e "$ETC_DIR/$f" ] || sudo sed -i -E '/^nixbld([0-9]+)?:/d' "$ETC_DIR/$f" 2>/dev/null || true
-  done
+  # Exactly the entries write_users creates (names AND ids); the preflight guarantees that
+  # none of them existed before, so nothing else can match. A preexisting nixbld99 or a
+  # user literally named nixbld is never touched.
+  local n='([1-9]|[12][0-9]|3[0-2])'
+  [ ! -e "$ETC_DIR/passwd" ] || sudo sed -i -E "/^nixbld${n}:x:300(0[1-9]|[12][0-9]|3[0-2]):${NIXBLD_GID}:Nix build user /d" "$ETC_DIR/passwd" 2>/dev/null || true
+  [ ! -e "$ETC_DIR/shadow" ] || sudo sed -i -E "/^nixbld${n}:!:19000:0:99999:7:::\$/d" "$ETC_DIR/shadow" 2>/dev/null || true
+  [ ! -e "$ETC_DIR/group" ] || sudo sed -i -E "/^nixbld:x:${NIXBLD_GID}:nixbld1,/d" "$ETC_DIR/group" 2>/dev/null || true
+  [ ! -e "$ETC_DIR/gshadow" ] || sudo sed -i -E "/^nixbld:!::nixbld1,/d" "$ETC_DIR/gshadow" 2>/dev/null || true
 }
 
 write_custom_conf() {
@@ -224,8 +232,10 @@ rollback() {
 }
 
 bootstrap() {
-  local why
-  if why="$(unsuitable)"; then
+  local why rc=0
+  why="$(unsuitable)" || rc=$?
+  if [ "$rc" != 1 ] || [ "$why" != ELIGIBLE ]; then
+    [ -n "$why" ] || why="eligibility check failed (status $rc)"
     log "fast path unavailable: ${why}; using the installer"
     emit "bootstrapped=false"
     return 0

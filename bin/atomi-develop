@@ -80,6 +80,9 @@ hash_inputs() {
       find "$p" \( -type f -o -type l \) -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum || return 1
       # ... plus every entry's type, mode and link target (directory entries, chmod +x)
       find "$p" -printf '%p %y %m %l\n' | LC_ALL=C sort || return 1
+      # ... and which of them git tracks: a git flake only sees tracked files, so
+      # `git add` of an already present file changes what nix evaluates
+      git ls-files -- "$p" 2>/dev/null | LC_ALL=C sort || return 1
     else
       echo "absent:$p"
     fi
@@ -109,8 +112,11 @@ store_paths_valid() {
 run_cached() {
   local f="$1" bash_bin
   shift
-  bash_bin="$(sed -n "s/^BASH='\(.*\)'$/\1/p" "$f" | head -n1)"
-  [ -x "$bash_bin" ] || bash_bin="$(command -v bash)"
+  # The bash `nix develop` itself would use (nixpkgs#bashInteractive, resolved once at
+  # store time): the stdenv bash lacks programmable completion etc., so a hook that is
+  # fine under nix develop could fail under it.
+  bash_bin="$(sed -n 's/^# atomi-bash: //p' "$f" | head -n1)"
+  [ -x "$bash_bin" ] || fallback
   # Like `nix develop`: run the generated script, THEN the command, unconditionally
   # (a shellHook whose last command fails must not skip it; set -e inside hooks is kept).
   # The command is spliced into the script text as shell-escaped literals, exactly how
@@ -119,10 +125,12 @@ run_cached() {
   # The env file is opened first and sourced through the open descriptor, so pruning or
   # replacing it concurrently cannot change or break this run; if it cannot be opened,
   # run plain nix develop instead of the command in the bare host environment.
-  local script q
-  exec 3<"$f" || fallback
+  # A free descriptor >= 10 is allocated (the caller's own fds stay untouched) and closed
+  # again right after sourcing, so the command sees the same fds as under nix develop.
+  local script q fd
+  exec {fd}<"$f" || fallback
   printf -v q '%q ' "$@"
-  script="source /dev/fd/3; exec $q"
+  script="source /dev/fd/$fd; exec $fd<&-; exec $q"
   exec "$bash_bin" -c "$script"
 }
 
@@ -134,7 +142,7 @@ if [ -f "$env_file" ] && store_paths_valid "$env_file"; then
       rm -f "$fresh"
       exit 97
     fi
-    grep -v '^export NIX_GCROOT=' "$env_file" >"$env_file.cmp" || true
+    grep -v -e '^export NIX_GCROOT=' -e '^# atomi-bash: ' "$env_file" >"$env_file.cmp" || true
     if ! diff -q "$env_file.cmp" "$fresh" >/dev/null; then
       log "VERIFY FAILED: cached env differs from a fresh evaluation (key $key)"
       diff "$env_file.cmp" "$fresh" | head -n 20 >&2
@@ -252,10 +260,29 @@ fi
 # not. Its hash prefix is the -frandom-seed, so recover the path and add it.
 seed="$(sed -n "s/.*-frandom-seed=\([a-z0-9]\{10\}\).*/\1/p" "$tmp" | head -n1)"
 if [ -n "$seed" ]; then
-  for g in /nix/store/"$seed"*-nix-shell-env; do
-    if [ -e "$g" ]; then sed -i "1i export NIX_GCROOT='$g'" "$tmp"; fi
+  # whatever the env derivation is called (a named mkShell changes the suffix)
+  for g in /nix/store/"$seed"*; do
+    if [ -e "$g" ]; then
+      sed -i "1i export NIX_GCROOT='$g'" "$tmp"
+      break
+    fi
   done
 fi
+# the interactive bash `nix develop` would run the script with (see run_cached); resolved
+# like nix does, through the flake registry's nixpkgs. Cost is paid on a miss only.
+bi=""
+while IFS= read -r p; do
+  # several outputs are printed (man, out, ...): the one holding bin/bash
+  if [ -x "$p/bin/bash" ]; then
+    bi="$p"
+    break
+  fi
+done < <(nix build --no-link --print-out-paths 'nixpkgs#bashInteractive' 2>/dev/null)
+if [ -z "$bi" ]; then
+  log "not caching: cannot resolve bashInteractive"
+  fallback_clean
+fi
+sed -i "1i # atomi-bash: $bi/bin/bash" "$tmp"
 chmod 0644 "$tmp"
 mv -f "$tmp" "$env_file"
 trap - EXIT
