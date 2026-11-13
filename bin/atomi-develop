@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# atomi-develop: `nix develop <flake>#<shell> -c <cmd...>` with the evaluated dev env cached.
+#
+#   atomi-develop .#ci -c ./scripts/ci/test.sh unit
+#
+# `nix develop` re-evaluates the flake on every commit (the eval cache is keyed on the
+# source tree) and resolves `nixpkgs#bashInteractive` through the registry, which can
+# download and unpack a nixpkgs tarball — together 5-8s before the shell hook even runs.
+# `nix print-dev-env` is the very script `nix develop` sources; this wrapper stores it on
+# the persisted /nix volume under a key covering everything the evaluation reads, and on
+# a hit sources it directly: same env, same shellHook, no evaluation.
+#
+# Anything it does not fully understand falls straight through to `nix develop "$@"`:
+# extra flags, no `-c`, a remote flake ref, a missing/unwritable cache dir, a cached env
+# whose store paths are no longer valid. It never changes what the command sees.
+#
+# Environment:
+#   ATOMI_DEVENV_DIR     cache dir (default /nix/atomi-devenv, i.e. on the cache volume)
+#   ATOMI_DEVENV_PATHS   space separated files/dirs (relative to the flake dir) hashed into
+#                        the key (default "flake.nix flake.lock nix"). Add every other path
+#                        your flake's .nix files read (builtins.readFile ./x, src = ./y).
+#   ATOMI_DEVENV_CACHE   set to 0 to bypass the cache entirely (plain `nix develop`)
+#   ATOMI_DEVENV_VERIFY  set to 1 on a hit to also evaluate fresh and fail loudly if the
+#                        two environments differ (debugging a key that misses an input)
+#   ATOMI_DEVENV_KEEP    number of cached envs to keep (default 8)
+set -uo pipefail
+
+log() { echo "[atomi-develop] $*" >&2; }
+plain() { exec nix develop "$@"; }
+
+[ "${ATOMI_DEVENV_CACHE:-1}" = "0" ] && plain "$@"
+
+# Only `<installable> -c <cmd...>` is cached.
+if [ "$#" -lt 3 ] || [ "${2:-}" != "-c" ]; then
+  plain "$@"
+fi
+installable="$1"
+shift 2
+flakeref="${installable%%#*}"
+[ -n "$flakeref" ] || flakeref="."
+is_local=0
+case "$flakeref" in . | ./* | ../* | /*) is_local=1 ;; esac
+if [ "$is_local" != 1 ] || [ ! -f "$flakeref/flake.nix" ]; then
+  set -- "$installable" -c "$@"
+  plain "$@"
+fi
+flakedir="$(cd "$flakeref" && pwd)"
+
+cache_dir="${ATOMI_DEVENV_DIR:-/nix/atomi-devenv}"
+if [ ! -d "$cache_dir" ]; then
+  sudo -n install -d -o "$(id -u)" "$cache_dir" 2>/dev/null || mkdir -p "$cache_dir" 2>/dev/null || true
+fi
+if [ ! -d "$cache_dir" ] || [ ! -w "$cache_dir" ]; then
+  set -- "$installable" -c "$@"
+  plain "$@"
+fi
+
+# ---- key ----------------------------------------------------------------------------
+key="$(
+  {
+    nix --version
+    uname -m
+    printf '%s\0%s\0' "$installable" "$flakedir"
+    cd "$flakedir" || exit 1
+    # shellcheck disable=SC2086
+    for p in ${ATOMI_DEVENV_PATHS:-flake.nix flake.lock nix}; do
+      if [ -d "$p" ]; then
+        find "$p" -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
+      elif [ -f "$p" ]; then
+        sha256sum "$p"
+      else
+        echo "absent:$p"
+      fi
+    done
+  } | sha256sum | cut -c1-32
+)"
+env_file="$cache_dir/$key.sh"
+
+store_paths_valid() {
+  # Every store path the cached env mentions must still exist in the store.
+  local f="$1" p
+  while IFS= read -r p; do
+    [ -e "$p" ] || return 1
+  done < <(grep -oE '/nix/store/[a-z0-9]{32}-[A-Za-z0-9._+-]+' "$f" | sort -u)
+  return 0
+}
+
+run_cached() {
+  local f="$1" bash_bin
+  shift
+  bash_bin="$(sed -n "s/^BASH='\(.*\)'$/\1/p" "$f" | head -n1)"
+  [ -x "$bash_bin" ] || bash_bin="$(command -v bash)"
+  # shellcheck disable=SC2016 # the script body must expand in the child bash, not here
+  exec "$bash_bin" -c 'f=$1; shift; cmd=("$@"); source "$f" && exec "${cmd[@]}"' atomi-develop "$f" "$@"
+}
+
+if [ -f "$env_file" ] && store_paths_valid "$env_file"; then
+  if [ "${ATOMI_DEVENV_VERIFY:-0}" = "1" ]; then
+    fresh="$(mktemp)"
+    (cd "$flakedir" && nix print-dev-env "$installable" >"$fresh") || { log "verify: print-dev-env failed"; plain "$installable" -c "$@"; }
+    grep -v '^export NIX_GCROOT=' "$env_file" >"$env_file.cmp" || true
+    if ! diff -q "$env_file.cmp" "$fresh" >/dev/null; then
+      log "VERIFY FAILED: cached env differs from a fresh evaluation (key $key)"
+      diff "$env_file.cmp" "$fresh" | head -n 20 >&2
+      rm -f "$env_file.cmp" "$fresh"
+      exit 97
+    fi
+    rm -f "$env_file.cmp" "$fresh"
+    log "verify ok"
+  fi
+  log "hit $key"
+  touch "$env_file" 2>/dev/null || true
+  run_cached "$env_file" "$@"
+fi
+
+# ---- miss: evaluate once, store, then run exactly like a hit ---------------------------
+log "miss $key (evaluating)"
+tmp="$(mktemp "$cache_dir/.tmp.XXXXXX")" || { set -- "$installable" -c "$@"; plain "$@"; }
+if ! (cd "$flakedir" && nix print-dev-env "$installable" >"$tmp"); then
+  rm -f "$tmp"
+  set -- "$installable" -c "$@"
+  plain "$@"
+fi
+# `nix develop` also exports NIX_GCROOT (the dev env's own store path); print-dev-env does
+# not. Its hash prefix is the -frandom-seed, so recover the path and add it.
+seed="$(sed -n "s/.*-frandom-seed=\([a-z0-9]\{10\}\).*/\1/p" "$tmp" | head -n1)"
+if [ -n "$seed" ]; then
+  for g in /nix/store/"$seed"*-nix-shell-env; do
+    [ -e "$g" ] && sed -i "1i export NIX_GCROOT='$g'" "$tmp"
+  done
+fi
+chmod 0644 "$tmp"
+mv -f "$tmp" "$env_file"
+# keep the newest N
+keep="${ATOMI_DEVENV_KEEP:-8}"
+# shellcheck disable=SC2012
+ls -1t "$cache_dir"/*.sh 2>/dev/null | tail -n +"$((keep + 1))" | xargs -r rm -f
+run_cached "$env_file" "$@"

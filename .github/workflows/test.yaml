@@ -55,6 +55,22 @@ jobs:
           time nix develop .#ci -c true
           time nix develop .#ci -c true
 
+      - name: atomi-develop matches nix develop
+        shell: bash
+        run: |
+          set -euo pipefail
+          norm() { sed -E 's#nix-shell\.[A-Za-z0-9]+#nix-shell.X#g; s#nix-develop-[0-9]+-[0-9]+#nix-develop.X#g' | grep -vE '^(_|SHLVL|OLDPWD)=' | sort; }
+          nix develop .#ci -c env | norm > /tmp/env-nix-develop.txt
+          atomi-develop .#ci -c env | norm > /tmp/env-first.txt
+          atomi-develop .#ci -c env | norm > /tmp/env-second.txt
+          diff /tmp/env-nix-develop.txt /tmp/env-first.txt
+          diff /tmp/env-nix-develop.txt /tmp/env-second.txt
+          ATOMI_DEVENV_VERIFY=1 atomi-develop .#ci -c true
+          rc=0
+          atomi-develop .#ci -c bash -c 'exit 7' || rc=$?
+          [ "$rc" -eq 7 ]
+          echo "atomi-develop is equivalent to nix develop"
+
       # Regression guard for the macOS checkout: the workspace must be a loose-ref
       # repo (nix reads git flakes via libgit2, which cannot open reftable), and nix
       # must be able to read it as a git flake.

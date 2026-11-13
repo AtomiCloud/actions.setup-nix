@@ -430,3 +430,10 @@ runs:
       if: inputs.attic-token != '' && inputs.attic == 'true'
       run: |
         attic login "${{ inputs.attic-user }}" "${{ inputs.attic-push-url }}" "${{ inputs.attic-token }}"
+
+    # `atomi-develop <flake>#<shell> -c <cmd...>`: `nix develop -c` with the evaluated dev
+    # env cached on the persisted /nix volume (Namespace Linux); a plain `nix develop`
+    # everywhere else. See bin/atomi-develop.
+    - name: Add atomi-develop to PATH
+      shell: bash
+      run: echo "$GITHUB_ACTION_PATH/bin" >> "$GITHUB_PATH"

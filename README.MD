@@ -178,3 +178,26 @@ It is the same Determinate Nix, the same `nix.conf`, the same daemon as an insta
 
 `rlespinasse/github-slug-action` (~1 s) exports the `GITHUB_*_SLUG` / `GITHUB_*_SHORT` variables
 that release/tagging jobs use. Plain test jobs can turn it off.
+
+### `atomi-develop`: `nix develop -c` without re-evaluating
+
+The action puts `atomi-develop` on `PATH`:
+
+```yaml
+- uses: AtomiCloud/actions.setup-nix@v3
+- run: atomi-develop .#ci -c ./scripts/ci/test.sh unit
+```
+
+`nix develop` re-evaluates the flake on every commit (the eval cache is keyed on the source tree)
+and looks up `nixpkgs#bashInteractive` through the registry. `atomi-develop` runs
+`nix print-dev-env` (the script `nix develop` itself sources) once per key and stores it under
+`/nix/atomi-devenv` on the cache volume; on a hit it sources it directly: same environment, same
+`shellHook`, no evaluation (`NIX_GCROOT` included; verified byte-for-byte against `nix develop -c env`).
+
+- **Key:** nix version, architecture, the installable, the flake directory and the content of
+  `flake.nix`, `flake.lock` and `nix/**`. If your `.nix` files read anything else (a `readFile`, a
+  `src = ./x`), list it in `ATOMI_DEVENV_PATHS` (space separated, relative to the flake dir).
+- **Safety:** a cached env whose store paths are no longer in the store is a miss. `ATOMI_DEVENV_VERIFY=1`
+  additionally evaluates fresh on a hit and fails if the two differ. `ATOMI_DEVENV_CACHE=0` bypasses.
+- **Fallback:** anything other than `<local flake>#<shell> -c <cmd...>` (extra flags, remote flake
+  refs, no cache dir, macOS/GitHub-hosted runners) runs plain `nix develop`.
