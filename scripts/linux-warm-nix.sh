@@ -99,14 +99,15 @@ unsuitable() {
   # attempt, an existing build-user setup) is the installer's business: it knows how to
   # detect, refuse or repair it. We only act on a pristine machine so that rollback can
   # safely remove exactly what we created.
-  [ ! -e "$ETC_DIR/nix" ] && [ ! -L "$ETC_DIR/nix" ] || {
+  # (-L too: a dangling symlink is "absent" to -e but would be removed by rollback)
+  if [ -e "$ETC_DIR/nix" ] || [ -L "$ETC_DIR/nix" ]; then
     echo "$ETC_DIR/nix already exists"
     return 0
-  }
-  [ ! -e "$BIN_DIR/determinate-nixd" ] && [ ! -L "$BIN_DIR/determinate-nixd" ] || {
+  fi
+  if [ -e "$BIN_DIR/determinate-nixd" ] || [ -L "$BIN_DIR/determinate-nixd" ]; then
     echo "$BIN_DIR/determinate-nixd already exists"
     return 0
-  }
+  fi
   # Every name and numeric id we are about to create must be free (not just the first
   # build user), otherwise appending would duplicate entries and rollback would remove
   # someone else's.
