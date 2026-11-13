@@ -66,16 +66,20 @@ if [ ! -d "$cache_dir" ] || [ ! -w "$cache_dir" ]; then fallback; fi
 hash_inputs() {
   nix --version || return 1
   uname -m || return 1
-  printf '%s\n%s\n%s\n' "$installable" "$flakedir" "$PWD"
+  # what the evaluation runs as: the effective system / platforms / search path / config
+  nix config show system || return 1
+  nix config show extra-platforms || return 1
+  printf '%s\n%s\n%s\n%s\n%s\n' "${NIX_CONFIG:-}" "${NIX_PATH:-}" "$installable" "$flakedir" "$PWD"
   cd "$flakedir" || return 1
   local p
   # shellcheck disable=SC2086
   for p in flake.nix flake.lock nix ${ATOMI_DEVENV_PATHS:-}; do
     if [ -d "$p" ] || [ -L "$p" ] || [ -f "$p" ]; then
-      # files and symlinks (a symlink's content is hashed through it; a dangling or
-      # directory link makes sha256sum fail, which fails the whole key)
+      # contents of files and symlinks (a symlink's content is hashed through it; a dangling
+      # or directory link makes sha256sum fail, which fails the whole key) ...
       find "$p" \( -type f -o -type l \) -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum || return 1
-      find "$p" -type l -printf '%p -> %l\n' | LC_ALL=C sort || return 1
+      # ... plus every entry's type, mode and link target (directory entries, chmod +x)
+      find "$p" -printf '%p %y %m %l\n' | LC_ALL=C sort || return 1
     else
       echo "absent:$p"
     fi
@@ -112,9 +116,13 @@ run_cached() {
   # The command is spliced into the script text as shell-escaped literals, exactly how
   # nix does it: nothing the sourced script can set (variables, `set --`, `shift`) can
   # change what runs.
+  # The env file is opened first and sourced through the open descriptor, so pruning or
+  # replacing it concurrently cannot change or break this run; if it cannot be opened,
+  # run plain nix develop instead of the command in the bare host environment.
   local script q
+  exec 3<"$f" || fallback
   printf -v q '%q ' "$@"
-  printf -v script 'source %q; exec %s' "$f" "$q"
+  script="source /dev/fd/3; exec $q"
   exec "$bash_bin" -c "$script"
 }
 
@@ -158,7 +166,6 @@ if ! nix print-dev-env "$abs_installable" >"$tmp"; then fallback_clean; fi
 # not depend on any of that and the key (flake.nix, flake.lock, nix/**, extras) is complete.
 # Any difference, or anything that cannot be probed, means: do not cache.
 probe_dir=""
-cleanup_probe() { [ -z "$probe_dir" ] || rm -rf "$probe_dir"; }
 not_cacheable() {
   if grep -q -E 'NIX_ATTRS_(JSON|SH)_FILE' "$tmp"; then
     echo "structured attrs (per-run temp files)"
@@ -192,18 +199,23 @@ not_cacheable() {
     set -e
     cd "$probe_dir/r"
     git checkout -q --detach "$head"
-    # the working tree's uncommitted tracked changes are part of what nix evaluates
+    # the working tree's uncommitted tracked changes are part of what nix evaluates; stage
+    # them so files added in the original index are tracked (and perturbed) in the copy too
     if ! git -C "$top" diff --quiet HEAD; then
       git -C "$top" diff HEAD --binary | git apply --whitespace=nowarn
     fi
-    # change every tracked file that is NOT a declared key input
-    declared=" flake.nix flake.lock nix ${ATOMI_DEVENV_PATHS:-} "
+    git add -A
+    # change every tracked file that is NOT a declared key input (declared paths are
+    # relative to the flake dir; compare them as repo-relative paths so a subdir flake
+    # does not protect unrelated paths at the repo root)
+    declared=()
+    for d in flake.nix flake.lock nix ${ATOMI_DEVENV_PATHS:-}; do
+      declared+=("${rel:+$rel/}${d#./}")
+    done
     while IFS= read -r -d '' f; do
       inkey=0
-      sub="${f#"$rel"/}"
-      [ -z "$rel" ] && sub="$f"
-      for d in $declared; do
-        case "$sub" in "$d" | "$d"/*) inkey=1 ;; esac
+      for d in "${declared[@]}"; do
+        case "$f" in "$d" | "$d"/*) inkey=1 ;; esac
       done
       if [ "$inkey" = 0 ] && [ -f "$f" ] && [ ! -L "$f" ]; then
         printf '\n# atomi-develop probe\n' >>"$f"
@@ -249,6 +261,13 @@ mv -f "$tmp" "$env_file"
 trap - EXIT
 # keep the newest N
 keep="${ATOMI_DEVENV_KEEP:-8}"
+[ "$keep" -ge 1 ] 2>/dev/null || keep=8
+n=0
+# the env just written is never pruned; keep the newest others up to N in total
 # shellcheck disable=SC2012
-ls -1t "$cache_dir"/*.sh 2>/dev/null | tail -n +"$((keep + 1))" | xargs -r rm -f
+while IFS= read -r old; do
+  [ "$old" = "$env_file" ] && continue
+  n=$((n + 1))
+  [ "$n" -lt "$keep" ] || rm -f -- "$old"
+done < <(ls -1t "$cache_dir"/*.sh 2>/dev/null)
 run_cached "$env_file" "$@"

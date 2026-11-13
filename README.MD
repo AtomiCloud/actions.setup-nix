@@ -185,6 +185,8 @@ The action puts `atomi-develop` on `PATH`:
 
 ```yaml
 - uses: AtomiCloud/actions.setup-nix@v3
+  with:
+    devshell-cache: 'true' # asserts the dev shell depends only on flake.nix, flake.lock, nix/** (see below)
 - run: atomi-develop .#ci -c ./scripts/ci/test.sh unit
 ```
 
@@ -194,21 +196,25 @@ and looks up `nixpkgs#bashInteractive` through the registry. `atomi-develop` run
 `/nix/atomi-devenv` on the cache volume; on a hit it sources it directly: same environment, same
 `shellHook`, no evaluation (`NIX_GCROOT` included; verified byte-for-byte against `nix develop -c env`).
 
-- **Opt-in, set automatically:** the action exports `ATOMI_DEVENV_CACHE=1` only on Namespace Linux
-  (persisted `/nix`). Everywhere else, and for anything it does not fully understand, it runs plain
-  `nix develop "$@"`.
-- **Key:** nix version, architecture, the installable, the flake directory, the caller's cwd and the
-  content of `flake.nix`, `flake.lock` and `nix/**` (symlinks followed). If your `.nix` files read
-  anything else (a `readFile`, a `src = ./x`), add it to `ATOMI_DEVENV_PATHS` (space separated,
-  relative to the flake dir; it extends, never replaces, the mandatory inputs).
-- **Fails closed, by test not by guess:** on a miss the wrapper also evaluates the same flake from a
-  throw-away copy that differs in everything the key does not cover (a new commit: rev, revCount,
-  lastModified, source path; and every tracked file outside the declared key inputs). Only if the two
-  dev envs are byte-identical is the env stored; otherwise (`self`, `src = ./.`, `self.shortRev`,
-  `revCount`, a `readFile` of an undeclared file ...) it is never cached (a `.nocache` marker makes
-  later runs skip the attempt). `__structuredAttrs` envs (per-run temp files), non-git flakes and
-  anything the key cannot hash are never cached either. A cached env whose store paths are no longer
-  in the store is a miss.
+- **Opt-in contract (`devshell-cache: 'true'`, off by default):** the input exports
+  `ATOMI_DEVENV_CACHE=1`, only on Namespace Linux (persisted `/nix`). By setting it a repo **asserts
+  that its dev shell depends only on `flake.nix`, `flake.lock`, `nix/**` and anything listed in
+  `ATOMI_DEVENV_PATHS`**, the same contract as any `hashFiles(...)` cache key. Without it (and on every
+  other runner, and for anything the wrapper does not fully understand) it runs plain `nix develop "$@"`.
+- **Key:** nix version, architecture, effective `system`/`extra-platforms`/`NIX_CONFIG`/`NIX_PATH`, the
+  installable, the flake directory, the caller's cwd and, for `flake.nix`, `flake.lock`, `nix/**` and
+  `ATOMI_DEVENV_PATHS` (which extends, never replaces, those): file contents (symlinks followed) plus
+  every entry's type, mode and link target (so adding a directory entry or `chmod +x` changes it).
+- **Safety net, not a proof:** on a miss the wrapper also evaluates the same flake from a throw-away
+  copy that differs in everything the key does not cover (a new commit: rev, revCount, lastModified,
+  source path; and every tracked file outside the declared inputs, repo-relative so sub-directory
+  flakes are handled). If the envs differ (`self`, `src = ./.`, `self.shortRev`, a `readFile` of an
+  undeclared file ...) the env is never cached (a `.nocache` marker skips the attempt next time).
+  This catches accidental violations of the contract but cannot prove independence (e.g. arithmetic on
+  `self.revCount` that happens to agree for the probe), which is why the repo opts in explicitly and
+  `ATOMI_DEVENV_VERIFY=1` exists. `__structuredAttrs` envs, non-git flakes and anything the key
+  cannot hash are never cached either. A cached env whose store paths are no longer in the store is a
+  miss.
 - **Same semantics as `nix develop -c`:** the generated script is sourced, then the command is
   `exec`ed unconditionally with its argv untouched (a `shellHook` that ends with a failing command does
   not skip the command; exit codes pass through). `ATOMI_DEVENV_VERIFY=1` additionally evaluates fresh on

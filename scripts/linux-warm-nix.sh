@@ -105,10 +105,20 @@ unsuitable() {
     echo "$BIN_DIR/determinate-nixd already exists"
     return 0
   }
-  if getent group nixbld >/dev/null 2>&1 || getent passwd nixbld1 >/dev/null 2>&1; then
-    echo "nixbld users/group already exist"
+  # Every name and numeric id we are about to create must be free (not just the first
+  # build user), otherwise appending would duplicate entries and rollback would remove
+  # someone else's.
+  local i
+  if getent group nixbld >/dev/null 2>&1 || getent group "$NIXBLD_GID" >/dev/null 2>&1; then
+    echo "group nixbld / gid $NIXBLD_GID already exists"
     return 0
   fi
+  for i in $(seq 1 "$NIXBLD_COUNT"); do
+    if getent passwd "nixbld$i" >/dev/null 2>&1 || getent passwd "$((NIXBLD_UID_BASE + i))" >/dev/null 2>&1; then
+      echo "user nixbld$i / uid $((NIXBLD_UID_BASE + i)) already exists"
+      return 0
+    fi
+  done
   return 1
 }
 
