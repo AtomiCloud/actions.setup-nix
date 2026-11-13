@@ -109,32 +109,45 @@ store_paths_valid() {
   return 0
 }
 
+# A bash taken from the REGISTRY's nixpkgs (the flake has no `nixpkgs` input of its own)
+# can drift from what nix develop would pick today: such entries expire after N days.
+registry_bash_fresh() {
+  local f="$1" src created max="${ATOMI_DEVENV_REGISTRY_MAX_AGE_DAYS:-7}"
+  src="$(sed -n 's/^# atomi-bash-src: //p' "$f" | head -n1)"
+  [ "$src" = registry ] || return 0
+  created="$(sed -n 's/^# atomi-created: //p' "$f" | head -n1)"
+  case "$created" in '' | *[!0-9]*) return 1 ;; esac
+  case "$max" in '' | *[!0-9]* | ??????*) max=7 ;; esac
+  [ $(($(date +%s) - created)) -le $((10#$max * 86400)) ]
+}
+
+# run_cached <fd> <cmd...>: <fd> is an already open descriptor on the cached env (opened
+# before anything else looked at the file, so pruning/replacing it concurrently cannot
+# change or break this run).
 run_cached() {
-  local f="$1" bash_bin
+  local fd="$1" bash_bin
   shift
-  # The bash `nix develop` itself would use (nixpkgs#bashInteractive, resolved once at
-  # store time): the stdenv bash lacks programmable completion etc., so a hook that is
-  # fine under nix develop could fail under it.
-  bash_bin="$(sed -n 's/^# atomi-bash: //p' "$f" | head -n1)"
+  # The bash `nix develop` itself would use (resolved once at store time): the stdenv bash
+  # lacks programmable completion etc., so a hook that is fine under nix develop could
+  # fail under it.
+  bash_bin="$(sed -n 's/^# atomi-bash: //p' "/dev/fd/$fd" | head -n1)"
   [ -x "$bash_bin" ] || fallback
   # Like `nix develop`: run the generated script, THEN the command, unconditionally
   # (a shellHook whose last command fails must not skip it; set -e inside hooks is kept).
   # The command is spliced into the script text as shell-escaped literals, exactly how
   # nix does it: nothing the sourced script can set (variables, `set --`, `shift`) can
-  # change what runs.
-  # The env file is opened first and sourced through the open descriptor, so pruning or
-  # replacing it concurrently cannot change or break this run; if it cannot be opened,
-  # run plain nix develop instead of the command in the bare host environment.
-  # A free descriptor >= 10 is allocated (the caller's own fds stay untouched) and closed
-  # again right after sourcing, so the command sees the same fds as under nix develop.
-  local script q fd
-  exec {fd}<"$f" || fallback
+  # change what runs. The descriptor (allocated >= 10, so the caller's own fds stay
+  # untouched) is closed again right after sourcing, so the command sees the same fds as
+  # under nix develop.
+  local script q
   printf -v q '%q ' "$@"
   script="source /dev/fd/$fd; exec $fd<&-; exec $q"
   exec "$bash_bin" -c "$script"
 }
 
-if [ -f "$env_file" ] && store_paths_valid "$env_file"; then
+pin=""
+if [ -f "$env_file" ] && { exec {pin}<"$env_file"; } 2>/dev/null &&
+  store_paths_valid "/dev/fd/$pin" && registry_bash_fresh "/dev/fd/$pin"; then
   if [ "${ATOMI_DEVENV_VERIFY:-0}" = "1" ]; then
     fresh="$(mktemp)"
     cmpf="$(mktemp)"
@@ -143,7 +156,7 @@ if [ -f "$env_file" ] && store_paths_valid "$env_file"; then
       rm -f "$fresh" "$cmpf"
       exit 97
     fi
-    grep -v -e '^export NIX_GCROOT=' -e '^# atomi-bash: ' "$env_file" >"$cmpf" || true
+    grep -v -e '^export NIX_GCROOT=' -e '^# atomi-' "/dev/fd/$pin" >"$cmpf" || true
     if ! diff -q "$cmpf" "$fresh" >/dev/null; then
       log "VERIFY FAILED: cached env differs from a fresh evaluation (key $key)"
       diff "$cmpf" "$fresh" | head -n 20 >&2
@@ -155,8 +168,9 @@ if [ -f "$env_file" ] && store_paths_valid "$env_file"; then
   fi
   log "hit $key"
   touch "$env_file" 2>/dev/null || true
-  run_cached "$env_file" "$@"
+  run_cached "$pin" "$@"
 fi
+if [ -n "$pin" ]; then exec {pin}<&-; fi
 
 # ---- miss: evaluate once, store, then run exactly like a hit ------------------------------
 log "miss $key (evaluating)"
@@ -283,10 +297,12 @@ bi=""
 # nix develop takes bashInteractive from the flake's own (locked) `nixpkgs` input when it
 # has one, else from the registry's nixpkgs
 if [ "$(nix eval --impure --raw --expr "if (builtins.getFlake \"$flakedir\").inputs ? nixpkgs then \"y\" else \"n\"" 2>/dev/null)" = y ]; then
+  bash_src=input
   bi_cmd=(nix build --no-link --print-out-paths --impure --expr
     "(builtins.getFlake \"$flakedir\").inputs.nixpkgs.legacyPackages.\${builtins.currentSystem}.bashInteractive")
 else
-  bi_cmd=(nix build --no-link --print-out-paths 'nixpkgs#bashInteractive')
+  bash_src=registry
+  bi_cmd=(nix build --no-link --print-out-paths "nixpkgs#bashInteractive")
 fi
 while IFS= read -r p; do
   # several outputs are printed (man, out, ...): the one holding bin/bash
@@ -299,7 +315,7 @@ if [ -z "$bi" ]; then
   log "not caching: cannot resolve bashInteractive"
   fallback_clean
 fi
-sed -i "1i # atomi-bash: $bi/bin/bash" "$tmp"
+sed -i -e "1i # atomi-created: $(date +%s)" -e "1i # atomi-bash-src: $bash_src" -e "1i # atomi-bash: $bi/bin/bash" "$tmp"
 chmod 0644 "$tmp"
 mv -f "$tmp" "$env_file"
 trap - EXIT
@@ -314,4 +330,5 @@ while IFS= read -r old; do
   n=$((n + 1))
   [ "$n" -lt "$keep" ] || rm -f -- "$old"
 done < <(ls -1t "$cache_dir"/*.sh 2>/dev/null)
-run_cached "$env_file" "$@"
+exec {pin}<"$env_file" || fallback
+run_cached "$pin" "$@"
