@@ -109,9 +109,13 @@ run_cached() {
   [ -x "$bash_bin" ] || bash_bin="$(command -v bash)"
   # Like `nix develop`: run the generated script, THEN the command, unconditionally
   # (a shellHook whose last command fails must not skip it; set -e inside hooks is kept).
-  # "$@" is not touched by the script (no shell variable of ours lives past `source`).
-  # shellcheck disable=SC2016 # the script body must expand in the child bash, not here
-  exec "$bash_bin" -c 'f=$1; shift; source "$f"; exec "$@"' atomi-develop "$f" "$@"
+  # The command is spliced into the script text as shell-escaped literals, exactly how
+  # nix does it: nothing the sourced script can set (variables, `set --`, `shift`) can
+  # change what runs.
+  local script q
+  printf -v q '%q ' "$@"
+  printf -v script 'source %q; exec %s' "$f" "$q"
+  exec "$bash_bin" -c "$script"
 }
 
 if [ -f "$env_file" ] && store_paths_valid "$env_file"; then
