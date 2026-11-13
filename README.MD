@@ -147,3 +147,34 @@ This action is a `composite` action.
 <!-- action-docs-runs -->
 
 <!-- prettier-ignore-end -->
+
+## Faster warm jobs on Namespace Linux
+
+Three opt-out / opt-in knobs cut the fixed per-job cost. Defaults keep every existing caller
+working.
+
+### Warm Nix bootstrap (automatic, `warm-bootstrap: 'true'`)
+
+On a Namespace Linux runner the cache volume persists `/nix` (the store, the db and the
+installer's receipt) but the VM is fresh, so everything the Determinate installer puts
+_outside_ `/nix` is gone. Re-running the installer to recreate it costs ~6 s. Instead:
+
+1. The **first** job (no snapshot yet) runs the installer as before and then snapshots what the
+   installer wrote outside `/nix` (`/usr/local/bin/determinate-nixd`, `/etc/nix/nix.conf`) into
+   `/nix/atomi-bootstrap` on the volume.
+2. Later jobs verify the persisted store (snapshot present and younger than
+   `warm-max-age-days`, `nix` runs, store db passes `PRAGMA quick_check`, nothing pre-installed in
+   the image), then recreate the build users, `/etc/nix/nix.conf` + `nix.custom.conf` (same computed
+   config the installer receives: substituters, keys, `lazy-trees`, `trusted-users`, `access-tokens`,
+   provenance tags), start `determinate-nixd daemon` directly (no systemd on these runners) and
+   export `PATH`. ~0.4 s.
+3. Any failure rolls back what it wrote and falls through to the installer steps. A snapshot older
+   than `warm-max-age-days` (default 7) is also refreshed by the installer so the Determinate Nix
+   version keeps following the installer's `stable`.
+
+It is the same Determinate Nix, the same `nix.conf`, the same daemon as an installer run.
+
+### `github-slug: 'false'`
+
+`rlespinasse/github-slug-action` (~1 s) exports the `GITHUB_*_SLUG` / `GITHUB_*_SHORT` variables
+that release/tagging jobs use. Plain test jobs can turn it off.

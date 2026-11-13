@@ -13,6 +13,15 @@ inputs:
   short-length:
     default: 7
     description: length for short values
+  github-slug:
+    default: 'true'
+    description: "Export the GITHUB_*_SLUG / GITHUB_*_SHORT environment variables (rlespinasse/github-slug-action, ~1s). Only release/tagging jobs need them: set 'false' for plain test jobs. The default keeps today's behaviour."
+  warm-bootstrap:
+    default: 'true'
+    description: "Namespace Linux only. Re-create Nix from the persisted /nix cache volume without running the Determinate installer (~0.4s instead of ~6s). Any verification failure falls back to the installer. Set 'false' to always run the installer."
+  warm-max-age-days:
+    default: '7'
+    description: 'Namespace Linux only. A persisted Nix install older than this many days is refreshed by the installer instead of being re-used, so the Determinate Nix version still follows the installer'
   auth-bot-app-id:
     default: ''
     description: App Id for auth bot
@@ -49,6 +58,7 @@ runs:
   using: 'composite'
   steps:
     - name: Inject enhanced GitHub environment variables
+      if: inputs.github-slug == 'true'
       uses: rlespinasse/github-slug-action@v5.x
       with:
         short-length: ${{ inputs.short-length }}
@@ -285,9 +295,24 @@ runs:
     # profile symlinks the installer wants to create itself) and install over the
     # existing store — store paths and the sqlite db are untouched, which is the
     # whole point of the volume.
+    # WARM FAST PATH (Namespace Linux): the persisted /nix already holds a working Nix.
+    # Only what lives OUTSIDE /nix (nix.conf, determinate-nixd, build users, the daemon
+    # process) is gone with the fresh VM, so recreate exactly that instead of running
+    # the installer. Verifies the store first and rolls back + reports bootstrapped=false
+    # on any problem, in which case the installer steps below run as before.
+    - name: Bootstrap Nix from persisted /nix (Namespace Linux)
+      id: linuxwarm
+      shell: bash
+      if: inputs.namespacelabs == 'true' && runner.os == 'Linux' && inputs.warm-bootstrap == 'true'
+      env:
+        NIX_CONF: ${{ steps.nixconf.outputs.config }}
+        GITHUB_TOKEN_VALUE: ${{ github.token }}
+        MAX_AGE_DAYS: ${{ inputs.warm-max-age-days }}
+      run: '"$GITHUB_ACTION_PATH/scripts/linux-warm-nix.sh" bootstrap'
+
     - name: Prepare warm Nix store for installer (Namespace Linux)
       shell: bash
-      if: inputs.namespacelabs == 'true' && runner.os == 'Linux'
+      if: inputs.namespacelabs == 'true' && runner.os == 'Linux' && steps.linuxwarm.outputs.bootstrapped != 'true'
       run: |
         set -euo pipefail
         sudo rm -f /nix/receipt.json
@@ -297,10 +322,17 @@ runs:
     # own APFS volume and mounts it over /nix, shadowing the image (observed). The
     # bootstrap below replaces it, which also removes its ~60s from the warm path.
     - name: Install Nix (Determinate Systems)
-      if: steps.niximg.outputs.attached != 'true'
+      if: steps.niximg.outputs.attached != 'true' && steps.linuxwarm.outputs.bootstrapped != 'true'
       uses: DeterminateSystems/nix-installer-action@main
       with:
         extra-conf: ${{ steps.nixconf.outputs.config }}
+
+    # Snapshot what the installer just wrote outside /nix onto the cache volume, so the
+    # next Namespace Linux job can take the warm fast path above.
+    - name: Capture Nix install state for warm jobs (Namespace Linux)
+      shell: bash
+      if: inputs.namespacelabs == 'true' && runner.os == 'Linux' && inputs.warm-bootstrap == 'true' && steps.linuxwarm.outputs.bootstrapped != 'true'
+      run: '"$GITHUB_ACTION_PATH/scripts/linux-warm-nix.sh" capture'
 
     - name: Bootstrap Nix from store image (macOS)
       shell: bash
