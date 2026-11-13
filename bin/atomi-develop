@@ -143,30 +143,51 @@ run_cached() {
   # nix does it: nothing the env script can set (variables, `set --`, `shift`) can change
   # what runs. The descriptor (allocated >= 10, so the caller's own fds stay untouched).
   # nix develop runs the generated script as a standalone script (not sourced) from a
-  # file under TMPDIR, so a top-level `return` and $0/BASH_SOURCE behave the same way here:
-  # the pinned env plus the literal command line become one script file `nix-shell.XXXXXX`
-  # under TMPDIR, which deletes itself as its first action (bash keeps it open) and closes
-  # the pinned descriptor before the command runs, so the command sees the same fds as
-  # under nix develop. Until bash has started, a trap removes the file on any exit/signal.
-  local q
+  # file under TMPDIR and stays the parent until it ends, removing the file afterwards. Do
+  # the same, so a top-level `return` and $0/BASH_SOURCE (the file stays readable while the
+  # hook runs) behave the same way: the pinned env plus the literal command line become one
+  # script file `nix-shell.XXXXXX`, run by bash as a child (stdin/stdout/stderr passed
+  # through, TERM/INT/HUP forwarded, exit status relayed); the file is removed on every exit
+  # path. The script closes the pinned descriptor before the command runs, so the command
+  # sees the same fds as under nix develop.
+  local q rc
   printf -v q '%q ' "$@"
   run_tmp="$(mktemp "${TMPDIR:-/tmp}/nix-shell.XXXXXX")" || fallback
-  trap 'rm -f -- "$run_tmp"' EXIT HUP INT TERM
+  trap 'rm -f -- "$run_tmp"' EXIT
+  trap 'forward TERM 143' TERM
+  trap 'forward INT 130' INT
+  trap 'forward HUP 129' HUP
   {
-    # shellcheck disable=SC2016
-    printf 'rm -f -- "${BASH_SOURCE[0]}"\nexec %s<&-\n' "$fd"
+    printf 'exec %s<&-\n' "$fd"
     cat "/dev/fd/$fd"
     printf '\nexec %s\n' "$q"
   } >"$run_tmp" || {
     rm -f -- "$run_tmp"
     fallback
   }
-  # exec replaces the shell (the EXIT trap does not run then); the script removes itself
-  exec "$bash_bin" "$run_tmp" || {
-    rm -f -- "$run_tmp"
-    fallback
-  }
+  child=""
+  "$bash_bin" "$run_tmp" <&0 &
+  child=$!
+  rc=0
+  wait "$child" || rc=$?
+  # a trapped signal makes `wait` return early: keep waiting for the real exit status
+  while kill -0 "$child" 2>/dev/null; do
+    wait "$child" || rc=$?
+  done
+  exit "$rc"
 }
+
+# signal forwarding for run_cached: before the child exists, just stop (the EXIT trap
+# removes the file); afterwards pass the signal on and let `wait` relay the child's status
+# shellcheck disable=SC2317  # invoked from traps
+forward() {
+  if [ -n "${child:-}" ]; then
+    kill -s "$1" "$child" 2>/dev/null || true
+  else
+    exit "$2"
+  fi
+}
+
 
 if [ -f "$env_file" ] && { exec {pin}<"$env_file"; } 2>/dev/null &&
   store_paths_valid "/dev/fd/$pin" && registry_bash_fresh "/dev/fd/$pin"; then
