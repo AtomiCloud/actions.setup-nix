@@ -29,21 +29,18 @@
 #   ATOMI_DEVENV_VERIFY  set to 1 on a hit to also evaluate fresh and fail loudly if the
 #                        two environments differ (debugging a key that misses an input)
 #   ATOMI_DEVENV_KEEP    number of cached envs to keep (default 8)
-# If the caller exported SHELLOPTS (e.g. `set -e; export SHELLOPTS`), the options this
-# wrapper sets for itself below would leak into every child (the cached bash and the plain
-# nix develop fall-through); children get the caller's original value back.
-envfix=()
-so_decl="$(declare -p SHELLOPTS 2>/dev/null)" || so_decl=""
-so_flags="${so_decl#declare }"
-so_flags="${so_flags%% *}"
-case "$so_flags" in
-  -*x*) envfix=(env "SHELLOPTS=$SHELLOPTS") ;;
-esac
+# The caller's environment, exactly as exported to this wrapper (SHELLOPTS included).
+# Everything we hand to a child (the cached bash, the plain `nix develop` fall-through) is
+# started from this snapshot with `env -i`, so nothing this wrapper assigns or exports
+# (its own variable names, nounset/pipefail in SHELLOPTS, allexport leaking helpers) can
+# reach a command or shellHook. It must be the very first statement, before any variable.
+mapfile -d '' caller_env < <(env -0)
+set +a
 set -uo pipefail
 
 log() { echo "[atomi-develop] $*" >&2; }
 # shellcheck disable=SC2317  # also reached through fallback
-plain() { exec ${envfix[@]+"${envfix[@]}"} nix develop "$@"; }
+plain() { exec env -i "${caller_env[@]}" nix develop "$@"; }
 
 # Original args, for any fall-through.
 orig=("$@")
@@ -175,7 +172,7 @@ run_cached() {
     rm -f -- "$run_tmp"
     fallback
   }
-  ${envfix[@]+"${envfix[@]}"} "$bash_bin" "$run_tmp" || rc=$?
+  env -i "${caller_env[@]}" "$bash_bin" "$run_tmp" || rc=$?
   exit "$rc"
 }
 
