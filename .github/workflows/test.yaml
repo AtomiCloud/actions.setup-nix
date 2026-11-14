@@ -55,45 +55,68 @@ jobs:
           time nix develop .#ci -c true
           time nix develop .#ci -c true
 
-      - name: atomi-develop matches nix develop
+      - name: durian-shell matches nix develop
         shell: bash
         run: |
           set -euo pipefail
           norm() { sed -E 's#nix-shell\.[A-Za-z0-9]+#nix-shell.X#g; s#nix-develop-[0-9]+-[0-9]+#nix-develop.X#g' | grep -vE '^(_|SHLVL|OLDPWD)=' | sort; }
           # The cache is opt-in (setup-nix sets this only on Namespace Linux); GitHub-hosted Linux opts in
           # here to exercise the cached path, macOS stays on the plain `nix develop` fall-through.
-          if [ "$RUNNER_OS" = "Linux" ]; then export ATOMI_DEVENV_CACHE=1; fi
+          if [ "$RUNNER_OS" = "Linux" ]; then export DURIAN_SHELL_CACHE=1; fi
           nix develop .#ci -c env | norm > /tmp/env-nix-develop.txt
-          atomi-develop .#ci -c env | norm > /tmp/env-first.txt
-          atomi-develop .#ci -c env | norm > /tmp/env-second.txt
+          durian-shell .#ci -c env | norm > /tmp/env-first.txt
+          durian-shell .#ci -c env | norm > /tmp/env-second.txt
           diff /tmp/env-nix-develop.txt /tmp/env-first.txt
           diff /tmp/env-nix-develop.txt /tmp/env-second.txt
-          ATOMI_DEVENV_VERIFY=1 atomi-develop .#ci -c true
+          DURIAN_SHELL_VERIFY=1 durian-shell .#ci -c true
           rc=0
-          atomi-develop .#ci -c bash -c 'exit 7' || rc=$?
+          durian-shell .#ci -c bash -c 'exit 7' || rc=$?
           [ "$rc" -eq 7 ]
-          echo "atomi-develop is equivalent to nix develop"
+          echo "durian-shell is equivalent to nix develop"
 
-      # devshell-prewarm: `atomi-develop --warm` stores every listed shell, runs nothing,
+      # Deprecated v3.7.0 name: bin/atomi-develop maps ATOMI_DEVENV_* to DURIAN_SHELL_* (an
+      # explicitly set old name wins), prints one deprecation line on stderr and execs
+      # durian-shell. Goes away with the shim in v4.
+      - name: atomi-develop shim (deprecated name)
+        shell: bash
+        run: |
+          set -euo pipefail
+          rc=0
+          atomi-develop .#ci -c bash -c 'exit 7' 2>/tmp/shim-err.txt || rc=$?
+          [ "$rc" -eq 7 ]
+          [ "$(grep -c '^\[atomi-develop\] deprecated: renamed to durian-shell' /tmp/shim-err.txt)" -eq 1 ]
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            export DURIAN_SHELL_CACHE=1
+            ATOMI_DEVENV_DIR="$RUNNER_TEMP/shim" atomi-develop .#ci -c true 2>&1 | tee /tmp/shim1.txt
+            grep -q '^\[durian-shell\] miss ' /tmp/shim1.txt
+            [ "$(find "$RUNNER_TEMP/shim" -name '*.sh' | wc -l)" -eq 1 ]
+            ATOMI_DEVENV_DIR="$RUNNER_TEMP/shim" atomi-develop .#ci -c true 2>&1 | tee /tmp/shim2.txt
+            grep -q '^\[durian-shell\] hit ' /tmp/shim2.txt
+            ATOMI_DEVENV_CACHE=0 ATOMI_DEVENV_DIR="$RUNNER_TEMP/shim" atomi-develop .#ci -c true 2>&1 | tee /tmp/shim3.txt
+            if grep -q '^\[durian-shell\]' /tmp/shim3.txt; then exit 1; fi
+          fi
+          echo "atomi-develop shim ok"
+
+      # devshell-prewarm: `durian-shell --warm` stores every listed shell, runs nothing,
       # never fails the caller, and is a no-op with the cache off.
-      - name: atomi-develop --warm
+      - name: durian-shell --warm
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
-          export ATOMI_DEVENV_CACHE=1 ATOMI_DEVENV_DIR="$RUNNER_TEMP/warm-test"
-          atomi-develop --warm .#ci .#no-such-shell
-          [ "$(find "$ATOMI_DEVENV_DIR" -name '*.sh' | wc -l)" -eq 1 ]
-          atomi-develop --warm .#ci 2>&1 | tee /tmp/warm2.txt
-          grep -q '^\[atomi-develop\] hit ' /tmp/warm2.txt
-          atomi-develop .#ci -c true 2>&1 | tee /tmp/run.txt
-          grep -q '^\[atomi-develop\] hit ' /tmp/run.txt
+          export DURIAN_SHELL_CACHE=1 DURIAN_SHELL_DIR="$RUNNER_TEMP/warm-test"
+          durian-shell --warm .#ci .#no-such-shell
+          [ "$(find "$DURIAN_SHELL_DIR" -name '*.sh' | wc -l)" -eq 1 ]
+          durian-shell --warm .#ci 2>&1 | tee /tmp/warm2.txt
+          grep -q '^\[durian-shell\] hit ' /tmp/warm2.txt
+          durian-shell .#ci -c true 2>&1 | tee /tmp/run.txt
+          grep -q '^\[durian-shell\] hit ' /tmp/run.txt
           # a keep limit below the list length must not evict a shell the pass just stored
-          ATOMI_DEVENV_KEEP=1 ATOMI_DEVENV_DIR="$RUNNER_TEMP/warm-keep" atomi-develop --warm .#ci .#releaser
+          DURIAN_SHELL_KEEP=1 DURIAN_SHELL_DIR="$RUNNER_TEMP/warm-keep" durian-shell --warm .#ci .#releaser
           [ "$(find "$RUNNER_TEMP/warm-keep" -name '*.sh' | wc -l)" -eq 2 ]
-          ATOMI_DEVENV_CACHE=0 ATOMI_DEVENV_DIR="$RUNNER_TEMP/warm-off" atomi-develop --warm .#ci
+          DURIAN_SHELL_CACHE=0 DURIAN_SHELL_DIR="$RUNNER_TEMP/warm-off" durian-shell --warm .#ci
           [ ! -e "$RUNNER_TEMP/warm-off" ]
-          echo "atomi-develop --warm ok"
+          echo "durian-shell --warm ok"
 
       # flakehub-login: 'false' must skip the warm path's login even when the job has OIDC
       # (stub daemon records the call; the real login is never attempted here).
