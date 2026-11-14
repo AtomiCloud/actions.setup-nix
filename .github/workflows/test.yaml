@@ -118,6 +118,12 @@ jobs:
           # the probe runs inside the dev shell, so it must not expand here
           # shellcheck disable=SC2016
           probe='echo "$IN_NIX_SHELL:${CC:+cc}:$(command -v bash)"'
+          # durian-shell needs bash 4.4+ and passes straight through to nix develop on macOS's bash 3.2
+          # (Namespace's macOS images have a newer bash first on PATH, GitHub's runner does not):
+          # put the dev shell's bash first so this step exercises the cache on every OS.
+          nbash="$(nix develop .#ci -c bash -c 'command -v bash')"
+          PATH="$(dirname "$nbash"):$PATH"
+          export PATH
           want="$(nix develop .#ci -c bash -c "$probe")"
           echo "nix develop: $want"
           case "$want" in impure:cc:/nix/store/*) ;; *) echo "unexpected probe output"; exit 1 ;; esac
