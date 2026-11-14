@@ -152,6 +152,7 @@ unchanged and still require signatures.
 | `attic-user` | <p>Local server alias used by <code>attic login</code></p> | `false` | `primordial` |
 | `attic-url` | <p>Pull URL (Cloudflare-proxied; NARs are edge-cached)</p> | `false` | `https://attic.primordial.atomi.cloud` |
 | `attic-push-url` | <p>Push URL (DNS-only, bypasses the Cloudflare 100MB request-body limit that 413s large NAR uploads)</p> | `false` | `https://attic-direct.primordial.atomi.cloud` |
+| `attic-priority` | <p>Substituter priority of attic (lower wins; cache.nixos.org is 40). Empty: 35 on Linux, 45 on macOS (behind cache.nixos.org: attic's cold edge serves the big darwin NARs slowly).</p> | `false` | `""` |
 | `attic-public-key` | <p>Public key for attic</p> | `false` | `primordial:puK/sRe9wgfcreXNCR+rym2gwLuICwIWyAwTSG9ctkU=` |
 | `attic-cache` | <p>Attic cache name</p> | `false` | `primordial` |
 | `attic-token` | <p>Token for attic</p> | `false` | `""` |

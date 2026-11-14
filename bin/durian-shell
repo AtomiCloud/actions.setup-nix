@@ -191,6 +191,8 @@ store_paths_valid() {
   # Every store path the cached env mentions must still exist in the store.
   local f="$1" p
   while IFS= read -r p; do
+    # macOS stdenv envs name placeholder paths (32 x e) that are never realised
+    case "$p" in /nix/store/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-*) continue ;; esac
     [ -e "$p" ] || return 1
   done < <(grep -oE '/nix/store/[a-z0-9]{32}-[A-Za-z0-9._+-]+' "$f" | sort -u)
   return 0

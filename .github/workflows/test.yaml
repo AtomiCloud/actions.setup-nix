@@ -49,6 +49,15 @@ jobs:
           echo "lazy-trees = $lazy"
           [ "$lazy" = "true" ]
 
+      - name: attic substituter priority (35 on Linux, 45 on macOS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          subs="$(nix config show substituters)"
+          echo "substituters = $subs"
+          if [ "$RUNNER_OS" = "macOS" ]; then want=45; else want=35; fi
+          echo "$subs" | tr ' ' '\n' | grep -F "attic.primordial.atomi.cloud/primordial" | grep -qF "priority=$want"
+
       - name: Time devshell evals (2nd should be eval-cache warm)
         run: |
           set -euo pipefail

@@ -67,6 +67,9 @@ inputs:
   attic-push-url:
     default: 'https://attic-direct.primordial.atomi.cloud'
     description: 'Push URL (DNS-only, bypasses the Cloudflare 100MB request-body limit that 413s large NAR uploads)'
+  attic-priority:
+    default: ''
+    description: "Substituter priority of attic (lower wins; cache.nixos.org is 40). Empty: 35 on Linux, 45 on macOS (behind cache.nixos.org: attic's cold edge serves the big darwin NARs slowly)."
   attic-public-key:
     default: 'primordial:puK/sRe9wgfcreXNCR+rym2gwLuICwIWyAwTSG9ctkU='
     description: 'Public key for attic'
@@ -166,6 +169,7 @@ runs:
         ATTIC_URL: ${{ inputs.attic-url }}
         ATTIC_CACHE: ${{ inputs.attic-cache }}
         ATTIC_PUBLIC_KEY: ${{ inputs.attic-public-key }}
+        ATTIC_PRIORITY: ${{ inputs.attic-priority }}
         DARWIN_CACHE_PATH: ${{ inputs.darwin-cache-path }}
       run: |
         set -euo pipefail
@@ -187,7 +191,15 @@ runs:
           # Priority 35: ahead of cache.nixos.org (40) — attic is a full mirror
           # served zstd-compressed from the Cloudflare edge, which beats nixos'
           # xz over origin for both transfer and decompress. Misses fall through.
-          subs="$subs ${ATTIC_URL}/${ATTIC_CACHE}?priority=35"
+          # macOS: 45, behind cache.nixos.org. The iOS shells' big darwin NARs (LLVM,
+          # apple-sdk, ruby, python) come off a cold attic edge at well under 1 MB/s:
+          # a cold job took 1,058 s in `nix develop` with attic first and 53-56 s with
+          # cache.nixos.org first, which holds 185 of the 188 paths attic served.
+          attic_prio="${ATTIC_PRIORITY:-}"
+          if [ -z "$attic_prio" ]; then
+            if [ "$RUNNER_OS" = "macOS" ]; then attic_prio=45; else attic_prio=35; fi
+          fi
+          subs="$subs ${ATTIC_URL}/${ATTIC_CACHE}?priority=${attic_prio}"
           keys="$keys $ATTIC_PUBLIC_KEY"
         fi
 
