@@ -11,6 +11,7 @@
 #              daemon, export PATH. Prints `bootstrapped=true|false` to $GITHUB_OUTPUT.
 #              Any failure rolls back everything it wrote and reports false, so the
 #              caller falls back to the real installer.
+#   flakehub-login  The FlakeHub login step of `bootstrap` on its own (tests).
 #   capture    Run once after a real install: snapshot the installer's out-of-/nix
 #              files into /nix/atomi-bootstrap (on the cache volume) for `bootstrap`.
 #   apply      Internal. The state-changing steps, run as a child process so `set -e`
@@ -21,6 +22,7 @@
 #   NIX_CONF            computed extra nix config (same text the installer receives)
 #   MAX_AGE_DAYS        refuse a snapshot older than this and reinstall (default 7), so
 #                       the Determinate Nix version still follows the installer's stable
+#   FLAKEHUB_LOGIN      'false' skips the FlakeHub login (default 'true')
 #   GITHUB_TOKEN_VALUE  optional; becomes `access-tokens = <server host>=...` like the
 #                       installer action does
 #   ATOMI_NIX_STATE_DIR / ATOMI_NIX_ETC_DIR / ATOMI_NIX_BIN_DIR override locations (tests)
@@ -260,11 +262,7 @@ bootstrap() {
     echo "${HOME}/.nix-profile/bin"
   } >>"${GITHUB_PATH:-/dev/null}"
 
-  # Same per-job FlakeHub login the installer action runs (only when the job has OIDC).
-  if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] && [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
-    "$BIN_DIR/determinate-nixd" login github-action ||
-      log "::warning::FlakeHub login failed (continuing, as the installer action does)"
-  fi
+  flakehub_login
 
   # Determinate's KVM hint (best effort; only matters for kvm-feature builds).
   if [ -e /dev/kvm ]; then
@@ -277,6 +275,20 @@ bootstrap() {
   fi
   log "$("$PROFILE/bin/nix" --version) bootstrapped from the persisted store (no installer)"
   emit "bootstrapped=true"
+}
+
+# Same per-job FlakeHub login the installer action runs: only when the job has OIDC
+# (`id-token: write`), and never when the caller turned it off with FLAKEHUB_LOGIN=false
+# (`flakehub-login: 'false'`). A failed login never fails the job (as in the installer
+# action); for a repo without FlakeHub access it fails after ~10-30s of retries.
+flakehub_login() {
+  if [ "${FLAKEHUB_LOGIN:-true}" = "false" ]; then
+    log "FlakeHub login skipped (flakehub-login: false)"
+  elif [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] && [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+    "$BIN_DIR/determinate-nixd" login github-action ||
+      log "::warning::FlakeHub login failed (continuing, as the installer action does)"
+  fi
+  return 0
 }
 
 capture() {
@@ -303,8 +315,9 @@ case "${1:-}" in
 bootstrap) bootstrap ;;
 capture) capture ;;
 apply) apply ;;
+flakehub-login) flakehub_login ;;
 *)
-  echo "usage: $0 bootstrap|capture" >&2
+  echo "usage: $0 bootstrap|capture|flakehub-login" >&2
   exit 2
   ;;
 esac
