@@ -126,7 +126,12 @@ jobs:
           cat "$RUNNER_TEMP/miss.err"
           echo "miss: rc=$rc out=$miss"
           [ "$rc" -eq 0 ]
-          grep -q '^\[durian-shell\] miss ' "$RUNNER_TEMP/miss.err"
+          if ! grep -q '^\[durian-shell\] miss ' "$RUNNER_TEMP/miss.err"; then
+            echo "::error::durian-shell did not take the cached path; trace follows"
+            rm -rf "$DURIAN_SHELL_DIR"
+            bash -x "$(command -v durian-shell)" .#ci -c true 2>&1 | tail -80 || true
+            exit 1
+          fi
           [ "$miss" = "$want" ]
           rc=0
           hit="$(durian-shell .#ci -c bash -c "$probe" 2>"$RUNNER_TEMP/hit.err")" || rc=$?
