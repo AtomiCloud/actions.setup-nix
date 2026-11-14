@@ -139,7 +139,7 @@ unchanged and still require signatures.
 | `warm-max-age-days` | <p>Namespace Linux only. A persisted Nix install older than this many days is refreshed by the installer instead of being re-used, so the Determinate Nix version still follows the installer</p> | `false` | `7` |
 | `devshell-cache` | <p>Namespace Linux only. Opt in to durian-shell's dev-shell cache. A repo that sets 'true' asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN<em>SHELL</em>PATHS): not on <code>self</code>/git metadata, nor on other files. Off by default: durian-shell is then plain <code>nix develop</code>.</p> | `false` | `false` |
 | `devshell-prewarm` | <p>With devshell-cache only. Space-separated installables (e.g. '.#ci .#cd'), written exactly as the jobs pass them to durian-shell. Every job makes sure ALL of them are cached (a miss is evaluated and stored), so a shell used by few jobs is not lost when parallel jobs write the cache volume back last-writer-wins. Empty: each job caches only the shell it runs.</p> | `false` | `""` |
-| `devshell-scope` | <p>With devshell-cache only. Which subfolder of the dev-shell cache this job's shells live in (lowercased, other characters become '-'). Default: the repository, so repos sharing one cache tag never prune each other's shells (the keep-newest limit counts per scope). Empty: one shared folder, as in v3.8.0.</p> | `false` | `${{ github.repository }}` |
+| `devshell-scope` | <p>With devshell-cache only. Which subfolder of the dev-shell cache this job's shells live in (lowercased, other characters become '-', plus a short hash of the exact value). Default: the repository, so repos sharing one cache tag never prune each other's shells (the keep-newest limit counts per scope). Empty: one shared folder, as in v3.8.0.</p> | `false` | `${{ github.repository }}` |
 | `store-guard` | <p>Namespace Linux only. Size warnings for the /nix cache volume (at 85% and over the size, where Namespace starts the next job on the tag from an EMPTY volume), the optional store GC below, and an end-of-job notice when the job changed nothing in /nix but will still commit its copy. Never fails the job. 'false' turns all of it off.</p> | `false` | `true` |
 | `cache-size-gb` | <p>Namespace Linux only. The cache volume size in GB that the job's nscloud-cache-size-NNgb label sets (Namespace default 20). The action cannot read runs-on labels: keep the two in step.</p> | `false` | `20` |
 | `store-gc-at-percent` | <p>Namespace Linux only, with store-guard. At job start, run a Nix store GC when /nix uses at least this percent of cache-size-gb (e.g. '80'). Every dev shell durian-shell keeps is a GC root, so only paths no kept shell or Nix profile needs are freed. Empty: never.</p> | `false` | `""` |
@@ -315,7 +315,7 @@ stop a job from committing (`nscloud-cache-exp-do-not-commit`, `nscloud-cache-al
 an action cannot. What the action does to keep a shared tag usable:
 
 - **`devshell-scope` (default: the repository).** `durian-shell` keeps each repository's envs in its own
-  folder (`/nix/durian-shell/<owner>-<repo>/`) and its keep-newest limit (`DURIAN_SHELL_KEEP`, 8)
+  folder (`/nix/durian-shell/<owner>-<repo>-<hash>/`, the hash keeps scopes that slug alike apart) and its keep-newest limit (`DURIAN_SHELL_KEEP`, 8)
   counts per folder. Before, one flat folder held every repository's envs, so with more than 8 shells
   on a tag each repository's miss pruned another repository's envs. Set `devshell-scope: ''` for the
   old flat folder.

@@ -34,7 +34,7 @@
 #                        two environments differ (debugging a key that misses an input)
 #   DURIAN_SHELL_KEEP    number of cached envs to keep per scope (default 8)
 #   DURIAN_SHELL_SCOPE   optional owner of the envs, e.g. the repository (setup-nix sets
-#                        github.repository). Envs then live in DURIAN_SHELL_DIR/<scope-slug>/
+#                        github.repository). Envs then live in DURIAN_SHELL_DIR/<slug>-<hash>/
 #                        and KEEP/pruning count only that scope, so many repos sharing one
 #                        volume cannot evict each other's envs. Empty: one flat dir.
 #
@@ -120,10 +120,12 @@ fi
 
 cache_dir="${DURIAN_SHELL_DIR:-/nix/durian-shell}"
 if [ -n "${DURIAN_SHELL_SCOPE:-}" ]; then
-  # lowercase, anything outside [a-z0-9._-] becomes '-'; never '', '.', '..' or hidden
+  # readable slug (lowercase, anything outside [a-z0-9._-] becomes '-', never hidden) plus a
+  # hash of the exact scope, so scopes that slug alike (Org/Repo-A, Org-Repo/A) stay apart
   scope="$(printf '%s' "$DURIAN_SHELL_SCOPE" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -c 'a-z0-9._-' '-')"
-  case "$scope" in '' | .*) scope="s-$scope" ;; esac
-  cache_dir="$cache_dir/$scope"
+  case "$scope" in .*) scope="s-$scope" ;; esac
+  scope_hash="$(printf '%s' "$DURIAN_SHELL_SCOPE" | sha256sum | cut -c1-8)" || fallback
+  cache_dir="$cache_dir/$scope-$scope_hash"
 fi
 if [ ! -d "$cache_dir" ]; then
   sudo -n install -d -o "$(id -u)" "$cache_dir" 2>/dev/null || mkdir -p "$cache_dir" 2>/dev/null || true

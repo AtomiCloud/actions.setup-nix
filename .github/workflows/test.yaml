@@ -133,8 +133,8 @@ jobs:
           DURIAN_SHELL_SCOPE=Org/Repo-B durian-shell .#releaser -c true
           DURIAN_SHELL_SCOPE=Org/Repo-B durian-shell .#ci -c true
           # repo B's KEEP=1 pruning dropped its own releaser env, never repo A's
-          [ "$(find "$DURIAN_SHELL_DIR/org-repo-a" -name '*.sh' | wc -l)" -eq 1 ]
-          [ "$(find "$DURIAN_SHELL_DIR/org-repo-b" -name '*.sh' | wc -l)" -eq 1 ]
+          [ "$(find "$DURIAN_SHELL_DIR"/org-repo-a-* -name '*.sh' | wc -l)" -eq 1 ]
+          [ "$(find "$DURIAN_SHELL_DIR"/org-repo-b-* -name '*.sh' | wc -l)" -eq 1 ]
           DURIAN_SHELL_SCOPE=Org/Repo-A durian-shell .#ci -c true 2>&1 | tee /tmp/scope-a.txt
           grep -q '^\[durian-shell\] hit ' /tmp/scope-a.txt
           # pruned envs take their roots with them; kept envs have both roots, registered
@@ -144,9 +144,12 @@ jobs:
             find /nix/var/nix/gcroots/auto -lname "$r" | grep -q .
           done
           # an env whose roots are missing gets them back on its next hit
-          rm -f "$DURIAN_SHELL_DIR"/org-repo-a/*.root
+          rm -f "$DURIAN_SHELL_DIR"/org-repo-a-*/*.root
           DURIAN_SHELL_SCOPE=Org/Repo-A durian-shell .#ci -c true
-          [ "$(find "$DURIAN_SHELL_DIR/org-repo-a" -name '*.root' | wc -l)" -eq 2 ]
+          [ "$(find "$DURIAN_SHELL_DIR"/org-repo-a-* -name '*.root' | wc -l)" -eq 2 ]
+          # scopes that slug alike still get separate folders
+          DURIAN_SHELL_SCOPE=Org-Repo/A durian-shell .#ci -c true
+          [ "$(find "$DURIAN_SHELL_DIR" -mindepth 1 -maxdepth 1 -name 'org-repo-a-*' | wc -l)" -eq 2 ]
           echo "scopes and roots ok"
 
       # store guard: size warnings (faked usage), the idle-commit notice, and its switches.
@@ -205,7 +208,7 @@ jobs:
             ./scripts/store-guard.sh start | tee /tmp/gc.txt
           grep -q '^\[store-guard\] GC done in ' /tmp/gc.txt
           if grep -q 'GC failed' /tmp/gc.txt; then exit 1; fi
-          f="$(find "$DURIAN_SHELL_DIR/test-gc" -name '*.sh')"
+          f="$(find "$DURIAN_SHELL_DIR"/test-gc-* -name '*.sh')"
           grep -oE '/nix/store/[a-z0-9]{32}-[A-Za-z0-9._+-]+' "$f" | sort -u | while IFS= read -r p; do
             [ -e "$p" ] || { echo "collected: $p"; exit 1; }
           done

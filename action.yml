@@ -30,7 +30,7 @@ inputs:
     description: "With devshell-cache only. Space-separated installables (e.g. '.#ci .#cd'), written exactly as the jobs pass them to durian-shell. Every job makes sure ALL of them are cached (a miss is evaluated and stored), so a shell used by few jobs is not lost when parallel jobs write the cache volume back last-writer-wins. Empty: each job caches only the shell it runs."
   devshell-scope:
     default: ${{ github.repository }}
-    description: "With devshell-cache only. Which subfolder of the dev-shell cache this job's shells live in (lowercased, other characters become '-'). Default: the repository, so repos sharing one cache tag never prune each other's shells (the keep-newest limit counts per scope). Empty: one shared folder, as in v3.8.0."
+    description: "With devshell-cache only. Which subfolder of the dev-shell cache this job's shells live in (lowercased, other characters become '-', plus a short hash of the exact value). Default: the repository, so repos sharing one cache tag never prune each other's shells (the keep-newest limit counts per scope). Empty: one shared folder, as in v3.8.0."
   store-guard:
     default: 'true'
     description: "Namespace Linux only. Size warnings for the /nix cache volume (at 85% and over the size, where Namespace starts the next job on the tag from an EMPTY volume), the optional store GC below, and an end-of-job notice when the job changed nothing in /nix but will still commit its copy. Never fails the job. 'false' turns all of it off."

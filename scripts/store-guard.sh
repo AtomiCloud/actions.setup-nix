@@ -28,7 +28,9 @@ set -uo pipefail
 state="${STORE_GUARD_STATE:-${RUNNER_TEMP:-/tmp}/atomi-store-guard.state}"
 devshell_dir="${DURIAN_SHELL_DIR:-/nix/durian-shell}"
 size_gb="${CACHE_SIZE_GB:-20}"
-case "$size_gb" in '' | *[!0-9]* | 0) size_gb=20 ;; esac
+case "$size_gb" in '' | *[!0-9]*) size_gb=20 ;; esac
+size_gb=$((10#$size_gb)) # decimal even with a leading zero
+[ "$size_gb" -gt 0 ] || size_gb=20
 limit=$((size_gb * 1024 * 1024 * 1024))
 
 log() { echo "[store-guard] $*"; }
@@ -46,7 +48,7 @@ used_bytes() {
 fingerprint() {
   {
     find /nix/store -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | LC_ALL=C sort | sha256sum
-    find "$devshell_dir" \( -name '*.sh' -o -name '*.nocache' \) -printf '%P\n' 2>/dev/null | LC_ALL=C sort | sha256sum
+    find "$devshell_dir" \( -name '*.sh' -o -name '*.nocache' -o -name '*.root' \) -printf '%P %l\n' 2>/dev/null | LC_ALL=C sort | sha256sum
   } | sha256sum | cut -c1-32
 }
 
@@ -67,6 +69,8 @@ gc_if_needed() {
   local used="$1" at="${STORE_GC_AT_PERCENT:-}" target="${STORE_GC_TARGET_PERCENT:-60}" want free t0 t1 after
   case "$at" in '' | *[!0-9]*) return 0 ;; esac
   case "$target" in '' | *[!0-9]*) target=60 ;; esac
+  at=$((10#$at))
+  target=$((10#$target))
   [ -n "$used" ] || return 0
   if [ $((used * 100)) -lt $((limit * at)) ]; then
     log "no GC: below $at% of ${size_gb} GB"
@@ -87,17 +91,19 @@ gc_if_needed() {
 
 case "${1:-}" in
 start)
+  # before the GC: a GC that freed something is a change worth committing
+  printf '%s %s\n' "$(date +%s)" "$(fingerprint)" >"$state" 2>/dev/null || true
   used="$(used_bytes)"
   gc_if_needed "$used"
   used="$(used_bytes)"
   size_report "$used" "job start"
-  printf '%s %s\n' "$(date +%s)" "$(fingerprint)" >"$state" 2>/dev/null || true
   ;;
 end)
   size_report "$(used_bytes)" "end of job, about to be committed"
   min="${IDLE_COMMIT_NOTICE_MINUTES:-0}"
   [ "$min" != off ] || exit 0
   case "$min" in '' | *[!0-9]*) min=0 ;; esac
+  min=$((10#$min))
   [ -f "$state" ] || exit 0
   read -r started fp <"$state" || exit 0
   [ -n "${fp:-}" ] || exit 0
