@@ -1,3 +1,17 @@
+## [3.9.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.8.0...v3.9.0) (2026-11-14)
+
+
+### 🐛 Bug Fixes 🐛
+
+* scope hash, decimal inputs, fingerprint (review comments) ([f370eaa](https://github.com/AtomiCloud/actions.setup-nix/commit/f370eaa230217562951a59bc38dd034b25035fd2))
+
+
+### ✨ Features ✨
+
+* keep 100 dev shells per scope by default, 0 or off never prunes ([9e1675d](https://github.com/AtomiCloud/actions.setup-nix/commit/9e1675d7ca7961850d5d225f194bf8be2e36c6e4))
+* keep a shared cache tag safe (per-repo scopes, GC roots, store guard) ([#29](https://github.com/AtomiCloud/actions.setup-nix/issues/29)) ([5e261d3](https://github.com/AtomiCloud/actions.setup-nix/commit/5e261d31ca547282f7ca043f4fe2f95e4c44fcb0))
+* keep a shared cache tag safe (scopes, GC roots, store guard) ([608f258](https://github.com/AtomiCloud/actions.setup-nix/commit/608f2588a1a4235a24137cecfa62bb7a80210b29))
+
 ## [3.8.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.7.0...v3.8.0) (2026-11-14)
 
 
