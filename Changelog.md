@@ -1,3 +1,30 @@
+## [3.10.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.9.1...v3.10.0) (2026-11-14)
+
+
+### 🐛 Bug Fixes 🐛
+
+* durian-shell --warm removes its private env copy ([0404434](https://github.com/AtomiCloud/actions.setup-nix/commit/040443467300c26892efdcfd7d928ad40bfbcec1))
+* durian-shell hashes with shasum where sha256sum is missing ([3717958](https://github.com/AtomiCloud/actions.setup-nix/commit/371795801c6ec32e03e380d6aab197a39ef095e4))
+* durian-shell reads the cached env once, portable find and sed ([49f87bc](https://github.com/AtomiCloud/actions.setup-nix/commit/49f87bc053bc977f271dfaf9e2bf94e6967d3e5e))
+* durian-shell verify failures remove the private env copy ([7d94ae9](https://github.com/AtomiCloud/actions.setup-nix/commit/7d94ae95506aedbb457bfaa653c70cd12bedb909))
+* macOS build-user setup fails loudly when a dscl call fails ([dc2b17b](https://github.com/AtomiCloud/actions.setup-nix/commit/dc2b17b2d7fda3bc6930a0e38b280aae1496540d))
+* slug step abbreviates short SHAs with git when the object exists ([7dca1e2](https://github.com/AtomiCloud/actions.setup-nix/commit/7dca1e2bcd4af33cf102776935c7589462859c1a))
+
+
+### ✨ Features ✨
+
+* allow devshell-cache on Namespace macOS with the store image ([f7f17f6](https://github.com/AtomiCloud/actions.setup-nix/commit/f7f17f6b6541d91e1bf2bb2cbcdc3546b3d58d8c))
+* attic behind nixos cache on macOS, durian-shell skips placeholders ([f06276a](https://github.com/AtomiCloud/actions.setup-nix/commit/f06276ad8f1c2dcea27e94e79fae054ff7b9dbfc))
+* export the GitHub slug variables from plain bash ([964160d](https://github.com/AtomiCloud/actions.setup-nix/commit/964160dd3bed9bb7b63c8e7cc0050c237b4594c8))
+* faster macOS warm start (daemon poll, build users, chown) ([0c55758](https://github.com/AtomiCloud/actions.setup-nix/commit/0c55758acd8e397a953df6c1cac0f9e1a6902d90))
+* faster start-up (macOS attic priority, durian-shell fixes, faster warm start) ([#31](https://github.com/AtomiCloud/actions.setup-nix/issues/31)) ([f9b9db8](https://github.com/AtomiCloud/actions.setup-nix/commit/f9b9db83d21f1fe7e95dbd007f98d10868fbcc83))
+* fetch-depth and deepen inputs (defaults keep today's behaviour) ([e2f8396](https://github.com/AtomiCloud/actions.setup-nix/commit/e2f83967824beb4ef511c22d58a9dd13cd5a4cc2))
+
+
+### 📝 Documentation Updates 📝
+
+* inputs table for fetch-depth, deepen, github-slug, devshell-cache ([7bc5e8e](https://github.com/AtomiCloud/actions.setup-nix/commit/7bc5e8ea885414aedaf8a112f3af24a13902f28a))
+
 ## [3.9.1](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.9.0...v3.9.1) (2026-11-14)
 
 
