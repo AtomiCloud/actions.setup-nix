@@ -35,12 +35,17 @@
 # fills the cache for every listed shell without running anything (setup-nix calls it for
 # `devshell-prewarm`). Parallel jobs commit the cache volume last-writer-wins, so a job that
 # stored only its own shell can drop another job's; warming the same list in every job keeps
-# all of them. A no-op when the cache is off; never fails the caller.
+# all of them. Keeps at least one cached env per listed shell (raises ATOMI_DEVENV_KEEP for
+# the pass when needed). A no-op when the cache is off; never fails the caller.
 if [ "${1:-}" = "--warm" ]; then
   shift
   [ "${ATOMI_DEVENV_CACHE:-0}" = "1" ] || exit 0
+  # pruning must not evict a shell this pass just stored: keep at least one per listed shell
+  keep="${ATOMI_DEVENV_KEEP:-8}"
+  [ "$keep" -ge 1 ] 2>/dev/null || keep=8
+  [ "$keep" -ge "$#" ] || keep="$#"
   for w in "$@"; do
-    ATOMI_DEVENV_WARM_ONLY=1 "${BASH_SOURCE[0]}" "$w" -c true ||
+    ATOMI_DEVENV_KEEP="$keep" ATOMI_DEVENV_WARM_ONLY=1 "${BASH_SOURCE[0]}" "$w" -c true ||
       echo "[atomi-develop] warm $w failed (ignored)" >&2
   done
   exit 0

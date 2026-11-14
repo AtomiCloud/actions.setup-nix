@@ -262,8 +262,9 @@ re-evaluated. List every shell the workflow uses, written exactly as the jobs pa
 Every job then runs `atomi-develop --warm .#ci .#cd` right after setup: a cached shell costs one key
 check (~0.2 s), a missing one is evaluated and stored (its closure is realised too), so whichever
 job's volume wins holds all listed shells. Nothing runs inside the shells, a shell that cannot be
-cached is skipped, and the step never fails the job. Without `devshell-cache` (and off Namespace
-Linux) the step does not run.
+cached is skipped, and the step never fails the job. The pass keeps at least one cached env per
+listed shell, raising `ATOMI_DEVENV_KEEP` (default 8) for itself when the list is longer. Without
+`devshell-cache` (and off Namespace Linux) the step does not run.
 
 ### `flakehub-login: 'false'`
 

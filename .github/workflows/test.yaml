@@ -88,6 +88,9 @@ jobs:
           grep -q '^\[atomi-develop\] hit ' /tmp/warm2.txt
           atomi-develop .#ci -c true 2>&1 | tee /tmp/run.txt
           grep -q '^\[atomi-develop\] hit ' /tmp/run.txt
+          # a keep limit below the list length must not evict a shell the pass just stored
+          ATOMI_DEVENV_KEEP=1 ATOMI_DEVENV_DIR="$RUNNER_TEMP/warm-keep" atomi-develop --warm .#ci .#releaser
+          [ "$(find "$RUNNER_TEMP/warm-keep" -name '*.sh' | wc -l)" -eq 2 ]
           ATOMI_DEVENV_CACHE=0 ATOMI_DEVENV_DIR="$RUNNER_TEMP/warm-off" atomi-develop --warm .#ci
           [ ! -e "$RUNNER_TEMP/warm-off" ]
           echo "atomi-develop --warm ok"
