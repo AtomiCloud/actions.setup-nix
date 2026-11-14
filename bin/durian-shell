@@ -115,7 +115,12 @@ fallback() {
   plain "${orig[@]}"
 }
 # --warm: the env is stored (hit or freshly evaluated); stop before running anything
-warm_done() { [ "${DURIAN_SHELL_WARM_ONLY:-0}" != "1" ] || exit 0; }
+warm_done() {
+  [ "${DURIAN_SHELL_WARM_ONLY:-0}" != "1" ] || {
+    if [ -n "$pinned" ]; then rm -f -- "$pinned"; fi
+    exit 0
+  }
+}
 
 [ "${DURIAN_SHELL_CACHE:-0}" = "1" ] || fallback
 if [ "$#" -lt 3 ] || [ "${2:-}" != "-c" ]; then fallback; fi
