@@ -72,6 +72,9 @@ jobs:
           rc=0
           durian-shell .#ci -c bash -c 'exit 7' || rc=$?
           [ "$rc" -eq 7 ]
+          # a warm-only call that falls through (here: cache off) must not run the command or the hook
+          DURIAN_SHELL_WARM_ONLY=1 DURIAN_SHELL_CACHE=0 durian-shell .#ci -c touch "$RUNNER_TEMP/warm-ran"
+          [ ! -e "$RUNNER_TEMP/warm-ran" ]
           echo "durian-shell is equivalent to nix develop"
 
       # Deprecated v3.7.0 name: bin/atomi-develop maps ATOMI_DEVENV_* to DURIAN_SHELL_* (an

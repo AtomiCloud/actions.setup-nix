@@ -57,10 +57,11 @@ fi
 # Pass-through BEFORE anything else (no variable assigned, no option set, no bash feature
 # beyond POSIX): the cache is off, the arguments are not `<flake>#<shell> -c cmd...`, or
 # this bash is too old (mapfile -d needs 4.4; macOS ships 3.2). Then this is exactly
-# `nix develop "$@"`, byte for byte.
+# `nix develop "$@"`, byte for byte. A --warm pass never runs anything: there it just ends.
 if [ "${DURIAN_SHELL_CACHE:-0}" != "1" ] || [ "$#" -lt 3 ] || [ "${2:-}" != "-c" ] ||
   [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] ||
   { [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -lt 4 ]; }; then
+  [ "${DURIAN_SHELL_WARM_ONLY:-0}" != "1" ] || exit 0
   exec nix develop "$@"
 fi
 # The caller's environment, exactly as exported to this wrapper (SHELLOPTS included).
