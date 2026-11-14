@@ -121,12 +121,18 @@ jobs:
           want="$(nix develop .#ci -c bash -c "$probe")"
           echo "nix develop: $want"
           case "$want" in impure:cc:/nix/store/*) ;; *) echo "unexpected probe output"; exit 1 ;; esac
-          miss="$(durian-shell .#ci -c bash -c "$probe" 2>"$RUNNER_TEMP/miss.err")"
+          rc=0
+          miss="$(durian-shell .#ci -c bash -c "$probe" 2>"$RUNNER_TEMP/miss.err")" || rc=$?
           cat "$RUNNER_TEMP/miss.err"
+          echo "miss: rc=$rc out=$miss"
+          [ "$rc" -eq 0 ]
           grep -q '^\[durian-shell\] miss ' "$RUNNER_TEMP/miss.err"
           [ "$miss" = "$want" ]
-          hit="$(durian-shell .#ci -c bash -c "$probe" 2>"$RUNNER_TEMP/hit.err")"
+          rc=0
+          hit="$(durian-shell .#ci -c bash -c "$probe" 2>"$RUNNER_TEMP/hit.err")" || rc=$?
           cat "$RUNNER_TEMP/hit.err"
+          echo "hit: rc=$rc out=$hit"
+          [ "$rc" -eq 0 ]
           grep -q '^\[durian-shell\] hit ' "$RUNNER_TEMP/hit.err"
           [ "$hit" = "$want" ]
           # the private copy of the env is gone afterwards
