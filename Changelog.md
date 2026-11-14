@@ -1,3 +1,12 @@
+## [3.9.1](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.9.0...v3.9.1) (2026-11-14)
+
+
+### 🐛 Bug Fixes 🐛
+
+* pin the hook to a commit, test it against checkouts and errors ([6bb05ce](https://github.com/AtomiCloud/actions.setup-nix/commit/6bb05ce010eae648bc10dabed36585e09b31c2bc))
+* store guard post hook survives a later checkout ([f8aff7b](https://github.com/AtomiCloud/actions.setup-nix/commit/f8aff7b07400c47bc18397a46eda40f90174e5aa))
+* store guard post hook survives a later checkout (v3.9.0 regression) ([#30](https://github.com/AtomiCloud/actions.setup-nix/issues/30)) ([6d925ab](https://github.com/AtomiCloud/actions.setup-nix/commit/6d925abfbcb27eaa93ae82ac74cf448a4a6003ad))
+
 ## [3.9.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.8.0...v3.9.0) (2026-11-14)
 
 
