@@ -24,7 +24,7 @@ inputs:
     description: 'Namespace Linux only. A persisted Nix install older than this many days is refreshed by the installer instead of being re-used, so the Determinate Nix version still follows the installer'
   devshell-cache:
     default: 'false'
-    description: "Namespace Linux only. Opt in to durian-shell's dev-shell cache. A repo that sets 'true' asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN_SHELL_PATHS): not on `self`/git metadata, nor on other files. Off by default: durian-shell is then plain `nix develop`."
+    description: "Namespace Linux, and Namespace macOS when the store image is attached. Opt in to durian-shell's dev-shell cache. A repo that sets 'true' asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN_SHELL_PATHS): not on `self`/git metadata, nor on other files. Off by default: durian-shell is then plain `nix develop`."
   devshell-prewarm:
     default: ''
     description: "With devshell-cache only. Space-separated installables (e.g. '.#ci .#cd'), written exactly as the jobs pass them to durian-shell. Every job makes sure ALL of them are cached (a miss is evaluated and stored), so a shell used by few jobs is not lost when parallel jobs write the cache volume back last-writer-wins. Empty: each job caches only the shell it runs."
@@ -506,11 +506,12 @@ runs:
     - name: Add durian-shell to PATH
       shell: bash
       env:
-        CACHE_OK: ${{ inputs.devshell-cache == 'true' && inputs.namespacelabs == 'true' && runner.os == 'Linux' }}
+        CACHE_OK: ${{ inputs.devshell-cache == 'true' && inputs.namespacelabs == 'true' && (runner.os == 'Linux' || steps.niximg.outputs.attached == 'true') }}
         SCOPE: ${{ inputs.devshell-scope }}
       run: |
         echo "$GITHUB_ACTION_PATH/bin" >> "$GITHUB_PATH"
-        # The dev-env cache lives on the persisted /nix volume: opt in only there.
+        # The dev-env cache lives on the persisted /nix: the Linux cache volume, or the
+        # macOS store image (when it was attached). Opt in only there.
         if [ "$CACHE_OK" = "true" ]; then
           echo "DURIAN_SHELL_CACHE=1" >> "$GITHUB_ENV"
           if [ -n "$SCOPE" ]; then echo "DURIAN_SHELL_SCOPE=$SCOPE" >> "$GITHUB_ENV"; fi
