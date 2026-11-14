@@ -15,7 +15,7 @@ inputs:
     description: length for short values
   github-slug:
     default: 'true'
-    description: "Export the GITHUB_*_SLUG / GITHUB_*_SHORT environment variables (rlespinasse/github-slug-action, ~1s). Only release/tagging jobs need them: set 'false' for plain test jobs. The default keeps today's behaviour."
+    description: "Export the GITHUB_*_SLUG / GITHUB_*_SHORT environment variables (plain bash, the same variables and rules as rlespinasse/github-slug-action v5). Only release/tagging jobs need them: set 'false' for plain test jobs. The default keeps today's behaviour."
   warm-bootstrap:
     default: 'true'
     description: "Namespace Linux only. Re-create Nix from the persisted /nix cache volume without running the Determinate installer (~0.4s instead of ~6s). Any verification failure falls back to the installer. Set 'false' to always run the installer."
@@ -89,10 +89,47 @@ runs:
   steps:
     - name: Inject enhanced GitHub environment variables
       if: inputs.github-slug == 'true'
-      uses: rlespinasse/github-slug-action@v5.x
-      with:
-        short-length: ${{ inputs.short-length }}
+      shell: bash
+      env:
+        SHORT_LENGTH: ${{ inputs.short-length }}
+        EVENT_REF: ${{ github.event.ref }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -euo pipefail
+        # slugify-value rules: strip one refs/<kind>/ prefix, runs of other characters become
+        # '-', no leading '-', cut to 63, no trailing '-'. url: '.' and '_' go too.
+        slug() { sed -E 's#refs/[^/]*/##;s/[^a-zA-Z0-9._-]+/-/g;s/^-*//' <<<"$1" | cut -c1-63 | sed -E 's/-*$//'; }
+        slug_url() { sed -E 's#refs/[^/]*/##;s/[^a-zA-Z0-9-]+/-/g;s/^-*//' <<<"$1" | cut -c1-63 | sed -E 's/-*$//'; }
+        emit() { # <NAME> <raw value>
+          local lo
+          lo="$(tr '[:upper:]' '[:lower:]' <<<"$2")"
+          {
+            echo "$1=$2"
+            echo "$1_SLUG=$(slug "$lo")"
+            echo "$1_SLUG_CS=$(slug "$2")"
+            echo "$1_SLUG_URL=$(slug_url "$lo")"
+            echo "$1_SLUG_URL_CS=$(slug_url "$2")"
+          } >>"$GITHUB_ENV"
+        }
+        short() { # <NAME> <sha>: first SHORT_LENGTH characters (empty sha: nothing, like the action)
+          [ -z "$2" ] || { echo "$1=$2"; echo "$1_SHORT=${2:0:$SHORT_LENGTH}"; } >>"$GITHUB_ENV"
+        }
+        emit GITHUB_REPOSITORY "$GITHUB_REPOSITORY"
+        emit GITHUB_REF "$GITHUB_REF"
+        emit GITHUB_HEAD_REF "${GITHUB_HEAD_REF:-}"
+        emit GITHUB_BASE_REF "${GITHUB_BASE_REF:-}"
+        emit GITHUB_EVENT_REF "$EVENT_REF"
+        emit GITHUB_REF_NAME "$GITHUB_REF_NAME"
+        emit GITHUB_REF_POINT "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+        emit GITHUB_REPOSITORY_OWNER_PART "${GITHUB_REPOSITORY%%/*}"
+        emit GITHUB_REPOSITORY_NAME_PART "${GITHUB_REPOSITORY#*/}"
+        short GITHUB_SHA "$GITHUB_SHA"
+        short GITHUB_EVENT_PULL_REQUEST_HEAD_SHA "$PR_HEAD_SHA"
 
+    # Plain bash instead of rlespinasse/github-slug-action: GitHub downloads every action a
+    # composite names, even skipped ones (that action pulls 3 repos: ~0.3 s on every job).
+    # Same variables and the same rules (rlespinasse/slugify-value, shortify-git-revision):
+    # test.yaml diffs this step against the real action on every push.
     # NOTE (macOS casing): reftable refs would dodge the APFS case-collision problem,
     # but nix reads git flakes through libgit2, which cannot open reftable repos
     # ("unsupported extension name extensions.refstorage") — so loose refs it is, and
