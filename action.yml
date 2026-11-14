@@ -261,7 +261,11 @@ runs:
       run: |
         set -euo pipefail
         target="$(readlink -f "$DARWIN_CACHE_PATH" 2>/dev/null || echo "$DARWIN_CACHE_PATH")"
-        sudo chown -R "$USER" "$target"
+        # The mount point is root-owned; what earlier jobs wrote is already ours, so chown
+        # only what is not (a recursive chown of the whole cache took ~0.4 s every job).
+        sudo chown "$USER" "$target"
+        find "$target" ! -user "$USER" -print0 | xargs -0 sudo chown "$USER" 2>/dev/null ||
+          sudo chown -R "$USER" "$target"
 
     # The cache action can mount ~/.cache/nix root-owned (same failure mode as the darwin
     # cache path above); nix then silently skips writing the eval cache, wasting the mount.
@@ -392,16 +396,20 @@ runs:
         } | sudo tee /etc/nix/nix.conf >/dev/null
 
         # Build users: the fresh VM has none; the daemon refuses to build without
-        # them. 8 is plenty for CI.
+        # them. 8 is plenty for CI. One sudo, the 8 users in parallel: 41 sequential
+        # sudo dscl calls took ~0.75 s of every warm job.
         if ! dscl . -read /Groups/nixbld >/dev/null 2>&1; then
-          sudo dscl . -create /Groups/nixbld PrimaryGroupID 30000
-          for i in $(seq 1 8); do
-            sudo dscl . -create "/Users/_nixbld$i" UniqueID $((30000 + i))
-            sudo dscl . -create "/Users/_nixbld$i" PrimaryGroupID 30000
-            sudo dscl . -create "/Users/_nixbld$i" UserShell /usr/bin/false
-            sudo dscl . -create "/Users/_nixbld$i" NFSHomeDirectory /var/empty
-            sudo dscl . -append /Groups/nixbld GroupMembership "_nixbld$i"
-          done
+          sudo bash -c '
+            dscl . -create /Groups/nixbld PrimaryGroupID 30000
+            for i in 1 2 3 4 5 6 7 8; do
+              ( u="/Users/_nixbld$i"
+                dscl . -create "$u" UniqueID $((30000 + i))
+                dscl . -create "$u" PrimaryGroupID 30000
+                dscl . -create "$u" UserShell /usr/bin/false
+                dscl . -create "$u" NFSHomeDirectory /var/empty ) &
+            done
+            wait
+            dscl . -create /Groups/nixbld GroupMembership _nixbld1 _nixbld2 _nixbld3 _nixbld4 _nixbld5 _nixbld6 _nixbld7 _nixbld8'
         fi
 
         # Plain nix-daemon from the image's profile (no determinate-nixd supervisor
@@ -425,9 +433,10 @@ runs:
         PLIST
         sudo launchctl load -w /Library/LaunchDaemons/org.nixos.nix-daemon.plist
 
-        for _ in $(seq 1 30); do
+        # poll every 50 ms (a 1 s sleep cost a full second: the socket appears in ~0.1 s)
+        for _ in $(seq 1 600); do
           [ -S /nix/var/nix/daemon-socket/socket ] && break
-          sleep 1
+          sleep 0.05
         done
         [ -S /nix/var/nix/daemon-socket/socket ] || { echo "::error::nix-daemon socket never appeared"; exit 1; }
 
