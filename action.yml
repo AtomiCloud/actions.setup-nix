@@ -471,22 +471,15 @@ runs:
         STORE_GC_TARGET_PERCENT: ${{ inputs.store-gc-target-percent }}
       run: '"$GITHUB_ACTION_PATH/scripts/store-guard.sh" start'
 
-    # End-of-job half of the store guard (same post-hook trick as the macOS cache push
-    # above: a symlinked JS sub-action, kept out of `git status`).
-    - name: Link store guard hook (Namespace Linux)
-      if: inputs.store-guard == 'true' && inputs.namespacelabs == 'true' && runner.os == 'Linux'
-      shell: bash
-      run: |
-        set -euo pipefail
-        ln -sfn "$GITHUB_ACTION_PATH/store-guard" "$GITHUB_WORKSPACE/.atomi-nix-store-guard"
-        ex="$GITHUB_WORKSPACE/.git/info/exclude"
-        if [ -d "${ex%/*}" ] && ! grep -qxF '/.atomi-nix-store-guard' "$ex" 2>/dev/null; then
-          echo '/.atomi-nix-store-guard' >>"$ex"
-        fi
-
+    # End-of-job half of the store guard: a JS sub-action whose `post:` runs the script above
+    # at end of job (composite actions cannot declare `post:`). Referenced as a remote action,
+    # so it lives in the runner's _actions dir: a later actions/checkout (e.g. setup-docker's)
+    # cleans the workspace, and a hook linked into the workspace would be gone by post time
+    # (v3.9.0 failed every such job in its post step). The hook only runs the script it is
+    # given, so the copy at the moving v3 tag is enough.
     - name: Register store guard hook (Namespace Linux)
       if: inputs.store-guard == 'true' && inputs.namespacelabs == 'true' && runner.os == 'Linux'
-      uses: ./.atomi-nix-store-guard
+      uses: AtomiCloud/actions.setup-nix/store-guard@v3
       with:
         script: ${{ github.action_path }}/scripts/store-guard.sh
         cache-size-gb: ${{ inputs.cache-size-gb }}
