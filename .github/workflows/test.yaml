@@ -121,6 +121,59 @@ jobs:
           [ ! -e "$RUNNER_TEMP/warm-off" ]
           echo "durian-shell --warm ok"
 
+      # devshell-scope: each scope keeps (and prunes) only its own envs, and every kept env is a
+      # registered GC root.
+      - name: durian-shell scopes and GC roots
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DURIAN_SHELL_CACHE=1 DURIAN_SHELL_DIR="$RUNNER_TEMP/scopes" DURIAN_SHELL_KEEP=1
+          DURIAN_SHELL_SCOPE=Org/Repo-A durian-shell .#ci -c true
+          DURIAN_SHELL_SCOPE=Org/Repo-B durian-shell .#releaser -c true
+          DURIAN_SHELL_SCOPE=Org/Repo-B durian-shell .#ci -c true
+          # repo B's KEEP=1 pruning dropped its own releaser env, never repo A's
+          [ "$(find "$DURIAN_SHELL_DIR/org-repo-a" -name '*.sh' | wc -l)" -eq 1 ]
+          [ "$(find "$DURIAN_SHELL_DIR/org-repo-b" -name '*.sh' | wc -l)" -eq 1 ]
+          DURIAN_SHELL_SCOPE=Org/Repo-A durian-shell .#ci -c true 2>&1 | tee /tmp/scope-a.txt
+          grep -q '^\[durian-shell\] hit ' /tmp/scope-a.txt
+          # pruned envs take their roots with them; kept envs have both roots, registered
+          [ "$(find "$DURIAN_SHELL_DIR" -name '*.root' | wc -l)" -eq 4 ]
+          for r in "$DURIAN_SHELL_DIR"/*/*.root; do
+            [ -e "$r" ]
+            find /nix/var/nix/gcroots/auto -lname "$r" | grep -q .
+          done
+          # an env whose roots are missing gets them back on its next hit
+          rm -f "$DURIAN_SHELL_DIR"/org-repo-a/*.root
+          DURIAN_SHELL_SCOPE=Org/Repo-A durian-shell .#ci -c true
+          [ "$(find "$DURIAN_SHELL_DIR/org-repo-a" -name '*.root' | wc -l)" -eq 2 ]
+          echo "scopes and roots ok"
+
+      # store guard: size warnings (faked usage), the idle-commit notice, and its switches.
+      - name: Store guard warnings and notice
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          g=./scripts/store-guard.sh
+          export STORE_GUARD_STATE="$RUNNER_TEMP/sg.state" DURIAN_SHELL_DIR="$RUNNER_TEMP/sg-shells" CACHE_SIZE_GB=10
+          mkdir -p "$DURIAN_SHELL_DIR"
+          STORE_GUARD_USED_BYTES=$((5 * 1024 ** 3)) $g start | tee /tmp/sg1.txt
+          if grep -q '^::' /tmp/sg1.txt; then exit 1; fi
+          STORE_GUARD_USED_BYTES=$((9 * 1024 ** 3)) $g start | tee /tmp/sg2.txt
+          grep -q '^::warning title=Nix cache volume nearly full::.*90%.*EMPTY volume' /tmp/sg2.txt
+          STORE_GUARD_USED_BYTES=$((11 * 1024 ** 3)) $g end | tee /tmp/sg3.txt
+          grep -q '^::error title=Nix cache volume over its size::.*NEXT job on this cache tag starts from an EMPTY volume' /tmp/sg3.txt
+          grep -q '^::notice title=Cache volume commit adds nothing::.*nscloud-cache-exp-do-not-commit' /tmp/sg3.txt
+          IDLE_COMMIT_NOTICE_MINUTES=off STORE_GUARD_USED_BYTES=1 $g end | tee /tmp/sg4.txt
+          if grep -q '^::notice' /tmp/sg4.txt; then exit 1; fi
+          IDLE_COMMIT_NOTICE_MINUTES=60 STORE_GUARD_USED_BYTES=1 $g end | tee /tmp/sg5.txt
+          if grep -q '^::notice' /tmp/sg5.txt; then exit 1; fi
+          touch "$DURIAN_SHELL_DIR/new.sh"
+          STORE_GUARD_USED_BYTES=1 $g end | tee /tmp/sg6.txt
+          if grep -q '^::notice' /tmp/sg6.txt; then exit 1; fi
+          echo "store guard warnings ok"
+
       # flakehub-login: 'false' must skip the warm path's login even when the job has OIDC
       # (stub daemon records the call; the real login is never attempted here).
       - name: Warm-path FlakeHub login switch
@@ -138,6 +191,27 @@ jobs:
           ./scripts/linux-warm-nix.sh flakehub-login
           [ "$(cat "$stub/calls")" = "login github-action" ]
           echo "flakehub-login switch ok"
+
+      # store-gc-at-percent: a full store GC keeps every path a kept env needs (it runs last:
+      # it collects everything else on this runner, flake inputs included).
+      - name: Store GC keeps live dev shells
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DURIAN_SHELL_CACHE=1 DURIAN_SHELL_DIR="$RUNNER_TEMP/gc-shells" DURIAN_SHELL_SCOPE=test/gc
+          durian-shell .#ci -c true
+          STORE_GUARD_STATE="$RUNNER_TEMP/gc.state" CACHE_SIZE_GB=1 STORE_GC_AT_PERCENT=1 STORE_GC_TARGET_PERCENT=0 \
+            ./scripts/store-guard.sh start | tee /tmp/gc.txt
+          grep -q '^\[store-guard\] GC done in ' /tmp/gc.txt
+          if grep -q 'GC failed' /tmp/gc.txt; then exit 1; fi
+          f="$(find "$DURIAN_SHELL_DIR/test-gc" -name '*.sh')"
+          grep -oE '/nix/store/[a-z0-9]{32}-[A-Za-z0-9._+-]+' "$f" | sort -u | while IFS= read -r p; do
+            [ -e "$p" ] || { echo "collected: $p"; exit 1; }
+          done
+          durian-shell .#ci -c true 2>&1 | tee /tmp/gc-hit.txt
+          grep -q '^\[durian-shell\] hit ' /tmp/gc-hit.txt
+          echo "store GC kept the live dev shell"
 
       # Regression guard for the macOS checkout: the workspace must be a loose-ref
       # repo (nix reads git flakes via libgit2, which cannot open reftable), and nix

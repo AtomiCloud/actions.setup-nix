@@ -139,6 +139,12 @@ unchanged and still require signatures.
 | `warm-max-age-days` | <p>Namespace Linux only. A persisted Nix install older than this many days is refreshed by the installer instead of being re-used, so the Determinate Nix version still follows the installer</p> | `false` | `7` |
 | `devshell-cache` | <p>Namespace Linux only. Opt in to durian-shell's dev-shell cache. A repo that sets 'true' asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN<em>SHELL</em>PATHS): not on <code>self</code>/git metadata, nor on other files. Off by default: durian-shell is then plain <code>nix develop</code>.</p> | `false` | `false` |
 | `devshell-prewarm` | <p>With devshell-cache only. Space-separated installables (e.g. '.#ci .#cd'), written exactly as the jobs pass them to durian-shell. Every job makes sure ALL of them are cached (a miss is evaluated and stored), so a shell used by few jobs is not lost when parallel jobs write the cache volume back last-writer-wins. Empty: each job caches only the shell it runs.</p> | `false` | `""` |
+| `devshell-scope` | <p>With devshell-cache only. Which subfolder of the dev-shell cache this job's shells live in (lowercased, other characters become '-'). Default: the repository, so repos sharing one cache tag never prune each other's shells (the keep-newest limit counts per scope). Empty: one shared folder, as in v3.8.0.</p> | `false` | `${{ github.repository }}` |
+| `store-guard` | <p>Namespace Linux only. Size warnings for the /nix cache volume (at 85% and over the size, where Namespace starts the next job on the tag from an EMPTY volume), the optional store GC below, and an end-of-job notice when the job changed nothing in /nix but will still commit its copy. Never fails the job. 'false' turns all of it off.</p> | `false` | `true` |
+| `cache-size-gb` | <p>Namespace Linux only. The cache volume size in GB that the job's nscloud-cache-size-NNgb label sets (Namespace default 20). The action cannot read runs-on labels: keep the two in step.</p> | `false` | `20` |
+| `store-gc-at-percent` | <p>Namespace Linux only, with store-guard. At job start, run a Nix store GC when /nix uses at least this percent of cache-size-gb (e.g. '80'). Every dev shell durian-shell keeps is a GC root, so only paths no kept shell or Nix profile needs are freed. Empty: never.</p> | `false` | `""` |
+| `store-gc-target-percent` | <p>With store-gc-at-percent. Free down to this percent of cache-size-gb (it stops earlier if everything left is still needed).</p> | `false` | `60` |
+| `idle-commit-notice-minutes` | <p>With store-guard. End-of-job notice when the job changed nothing in /nix (no store path, no dev shell) and ran at least this many minutes: Namespace still commits its older copy over what other jobs on the tag wrote, so such jobs may want the nscloud-cache-exp-do-not-commit label. '0': always; 'off': never.</p> | `false` | `0` |
 | `flakehub-login` | <p>Log in to FlakeHub with the job's OIDC token on the warm-bootstrap path (only happens when the job has <code>id-token: write</code>). Set 'false' when the job needs OIDC for something else but uses no FlakeHub cache or private flakes: a login without FlakeHub access fails after ~10-30s of retries. The Determinate installer action (cold volume, GitHub-hosted) has no such switch and still logs in whenever the job has OIDC: drop <code>id-token: write</code> from jobs that do not need it.</p> | `false` | `true` |
 | `auth-bot-app-id` | <p>App Id for auth bot</p> | `false` | `""` |
 | `auth-bot-secret-key` | <p>Private key for auth bot</p> | `false` | `""` |
@@ -165,16 +171,21 @@ This action is a `composite` action.
 
 ## Faster warm jobs on Namespace Linux
 
-Five opt-out / opt-in knobs cut the fixed per-job cost. Defaults keep every existing caller
+These opt-out / opt-in knobs cut the fixed per-job cost and keep a shared cache volume healthy. Defaults keep every existing caller
 working.
 
-**Which defaults change for existing callers?** Exactly one: on Namespace Linux runners the
+**Which defaults change for existing callers?** On Namespace Linux runners: (1) the
 Determinate installer is no longer run when the persisted `/nix` is valid (`warm-bootstrap`,
 default `'true'`). The result is the same Determinate Nix, `nix.conf` and daemon, and any failure
 falls back to the installer. **Opt out** with `warm-bootstrap: 'false'` (the installer runs
-every job, as before). `github-slug` (default `'true'`), `devshell-cache` (default `'false'`),
-`devshell-prewarm` (default empty) and `flakehub-login` (default `'true'`) change nothing unless a repo sets
-them. macOS and GitHub-hosted runners are unaffected.
+every job, as before). (2) Since v3.9.0, `store-guard` (default `'true'`) checks the volume's size at job
+start and end (warning at 85%, error annotation over the size) and adds an end-of-job notice for jobs
+that changed nothing; it never fails a job and never deletes anything unless `store-gc-at-percent` is
+set. (3) With `devshell-cache: 'true'`, cached dev shells now live in a per-repository folder
+(`devshell-scope`): each shell is evaluated once more after the upgrade. `github-slug` (default
+`'true'`), `devshell-prewarm` (default empty), `flakehub-login` (default `'true'`) and
+`store-gc-at-percent` (default empty) change nothing unless a repo sets them. macOS and GitHub-hosted
+runners are unaffected.
 
 ### Warm Nix bootstrap (automatic, `warm-bootstrap: 'true'`)
 
@@ -295,3 +306,42 @@ retries for ~10-30 s before giving up (the job continues). Set `flakehub-login: 
 the warm-bootstrap path. The installer action has no such switch and still logs in whenever the job
 has OIDC (GitHub injects the token variables into every JavaScript action step, so they cannot be
 blanked from here): the real fix is to grant `id-token: write` only to jobs that use it.
+
+### Sharing one cache tag safely: `devshell-scope`, `store-guard`, store GC
+
+Every job (in any repository) that carries the same `nscloud-cache-tag-*` label shares one volume,
+and Namespace commits each successful job's copy of it, last write wins. Only `runs-on` labels can
+stop a job from committing (`nscloud-cache-exp-do-not-commit`, `nscloud-cache-allow-commit-from-<branch>`);
+an action cannot. What the action does to keep a shared tag usable:
+
+- **`devshell-scope` (default: the repository).** `durian-shell` keeps each repository's envs in its own
+  folder (`/nix/durian-shell/<owner>-<repo>/`) and its keep-newest limit (`DURIAN_SHELL_KEEP`, 8)
+  counts per folder. Before, one flat folder held every repository's envs, so with more than 8 shells
+  on a tag each repository's miss pruned another repository's envs. Set `devshell-scope: ''` for the
+  old flat folder.
+- **Kept envs are GC roots.** Each stored env registers two indirect GC roots next to it
+  (`<key>.root` -> its `NIX_GCROOT`, `<key>.bash.root` -> the bash it runs with); pruning an env
+  removes them. A store GC therefore keeps everything a kept env needs (its whole closure) and frees
+  the rest. Envs stored before v3.9.0 get their roots on their next hit.
+- **`store-gc-at-percent` (opt-in).** At job start, when `/nix` uses at least this percent of
+  `cache-size-gb`, run `nix store gc` down to `store-gc-target-percent` (default 60). Nothing on
+  this volume ever shrinks `/nix` otherwise.
+- **Size warnings (`store-guard`).** At 85% of `cache-size-gb` a warning, and over it an error
+  annotation (the job still passes): Namespace still commits an over-size generation but will not
+  clone it, so the next job on the tag starts from an EMPTY volume (full install and store download).
+  `cache-size-gb` must match the job's `nscloud-cache-size-<n>gb` label (default 20); the action
+  cannot read labels.
+- **Idle-commit notice.** At the end of a successful job that changed nothing in `/nix` (no store path
+  added or removed, no dev shell stored), a notice says its older copy will still be committed over
+  what other jobs wrote meanwhile and names `nscloud-cache-exp-do-not-commit`. Use
+  `idle-commit-notice-minutes` to only flag long jobs (their copies are the oldest), or `off`.
+  Jobs that carry the tag but do not run this action are invisible to it: give them no tag, or the
+  do-not-commit label.
+
+```yaml
+- uses: AtomiCloud/actions.setup-nix@v3
+  with:
+    devshell-cache: 'true'
+    cache-size-gb: '20' # same as nscloud-cache-size-20gb (or the default)
+    store-gc-at-percent: '80' # opt in: GC at 16 GB, down to 12 GB
+```

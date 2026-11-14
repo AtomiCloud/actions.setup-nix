@@ -32,7 +32,15 @@
 #                        Add every other path your flake's .nix files read.
 #   DURIAN_SHELL_VERIFY  set to 1 on a hit to also evaluate fresh and fail loudly if the
 #                        two environments differ (debugging a key that misses an input)
-#   DURIAN_SHELL_KEEP    number of cached envs to keep (default 8)
+#   DURIAN_SHELL_KEEP    number of cached envs to keep per scope (default 8)
+#   DURIAN_SHELL_SCOPE   optional owner of the envs, e.g. the repository (setup-nix sets
+#                        github.repository). Envs then live in DURIAN_SHELL_DIR/<scope-slug>/
+#                        and KEEP/pruning count only that scope, so many repos sharing one
+#                        volume cannot evict each other's envs. Empty: one flat dir.
+#
+# Every stored env is also an indirect GC root (<key>.root -> its NIX_GCROOT, <key>.bash.root
+# -> the bash it runs with), so `nix store gc` keeps what a kept env needs and frees the rest;
+# pruning an env removes its roots.
 #
 #   durian-shell --warm .#ci .#cd
 #
@@ -111,6 +119,12 @@ else
 fi
 
 cache_dir="${DURIAN_SHELL_DIR:-/nix/durian-shell}"
+if [ -n "${DURIAN_SHELL_SCOPE:-}" ]; then
+  # lowercase, anything outside [a-z0-9._-] becomes '-'; never '', '.', '..' or hidden
+  scope="$(printf '%s' "$DURIAN_SHELL_SCOPE" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -c 'a-z0-9._-' '-')"
+  case "$scope" in '' | .*) scope="s-$scope" ;; esac
+  cache_dir="$cache_dir/$scope"
+fi
 if [ ! -d "$cache_dir" ]; then
   sudo -n install -d -o "$(id -u)" "$cache_dir" 2>/dev/null || mkdir -p "$cache_dir" 2>/dev/null || true
 fi
@@ -153,6 +167,18 @@ if [ -f "$nocache_file" ]; then
   log "not cacheable ($(cat "$nocache_file")); plain nix develop"
   fallback
 fi
+
+# add_roots <env file> <key>: the env's NIX_GCROOT and its bash become indirect GC roots
+# (symlinks next to the env, registered in /nix/var/nix/gcroots/auto by nix-store).
+add_roots() {
+  local f="$1" k="$2" g b
+  g="$(sed -n "s/^export NIX_GCROOT='\(.*\)'$/\1/p" "$f" | head -n1)"
+  b="$(sed -n 's/^# durian-bash: //p' "$f" | head -n1)"
+  b="${b%/bin/bash}"
+  [ -n "$g" ] && [ -n "$b" ] || return 1
+  nix-store --add-root "$cache_dir/$k.root" -r "$g" >/dev/null 2>&1 || return 1
+  nix-store --add-root "$cache_dir/$k.bash.root" -r "$b" >/dev/null 2>&1 || return 1
+}
 
 store_paths_valid() {
   # Every store path the cached env mentions must still exist in the store.
@@ -239,6 +265,10 @@ if [ -f "$env_file" ] && { exec {pin}<"$env_file"; } 2>/dev/null &&
   fi
   log "hit $key"
   touch "$env_file" 2>/dev/null || true
+  # envs stored before roots existed (or whose roots were removed) get them now
+  if [ ! -L "$cache_dir/$key.root" ] || [ ! -L "$cache_dir/$key.bash.root" ]; then
+    add_roots "/dev/fd/$pin" "$key" || log "could not register GC roots for $key (a store GC may collect it)"
+  fi
   warm_done
   run_cached "$pin" "$@"
 fi
@@ -390,6 +420,7 @@ fi
 sed -i -e "1i # durian-created: $(date +%s)" -e "1i # durian-bash-src: $bash_src" -e "1i # durian-bash: $bi/bin/bash" "$tmp"
 chmod 0644 "$tmp"
 mv -f "$tmp" "$env_file"
+add_roots "$env_file" "$key" || log "could not register GC roots for $key (a store GC may collect it)"
 trap - EXIT
 # keep the newest N
 keep="${DURIAN_SHELL_KEEP:-8}"
@@ -400,7 +431,7 @@ n=0
 while IFS= read -r old; do
   [ "$old" = "$env_file" ] && continue
   n=$((n + 1))
-  [ "$n" -lt "$keep" ] || rm -f -- "$old"
+  [ "$n" -lt "$keep" ] || rm -f -- "$old" "${old%.sh}.root" "${old%.sh}.bash.root"
 done < <(ls -1t "$cache_dir"/*.sh 2>/dev/null)
 exec {pin}<"$env_file" || fallback
 warm_done

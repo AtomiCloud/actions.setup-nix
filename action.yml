@@ -28,6 +28,24 @@ inputs:
   devshell-prewarm:
     default: ''
     description: "With devshell-cache only. Space-separated installables (e.g. '.#ci .#cd'), written exactly as the jobs pass them to durian-shell. Every job makes sure ALL of them are cached (a miss is evaluated and stored), so a shell used by few jobs is not lost when parallel jobs write the cache volume back last-writer-wins. Empty: each job caches only the shell it runs."
+  devshell-scope:
+    default: ${{ github.repository }}
+    description: "With devshell-cache only. Which subfolder of the dev-shell cache this job's shells live in (lowercased, other characters become '-'). Default: the repository, so repos sharing one cache tag never prune each other's shells (the keep-newest limit counts per scope). Empty: one shared folder, as in v3.8.0."
+  store-guard:
+    default: 'true'
+    description: "Namespace Linux only. Size warnings for the /nix cache volume (at 85% and over the size, where Namespace starts the next job on the tag from an EMPTY volume), the optional store GC below, and an end-of-job notice when the job changed nothing in /nix but will still commit its copy. Never fails the job. 'false' turns all of it off."
+  cache-size-gb:
+    default: '20'
+    description: "Namespace Linux only. The cache volume size in GB that the job's nscloud-cache-size-NNgb label sets (Namespace default 20). The action cannot read runs-on labels: keep the two in step."
+  store-gc-at-percent:
+    default: ''
+    description: "Namespace Linux only, with store-guard. At job start, run a Nix store GC when /nix uses at least this percent of cache-size-gb (e.g. '80'). Every dev shell durian-shell keeps is a GC root, so only paths no kept shell or Nix profile needs are freed. Empty: never."
+  store-gc-target-percent:
+    default: '60'
+    description: 'With store-gc-at-percent. Free down to this percent of cache-size-gb (it stops earlier if everything left is still needed).'
+  idle-commit-notice-minutes:
+    default: '0'
+    description: "With store-guard. End-of-job notice when the job changed nothing in /nix (no store path, no dev shell) and ran at least this many minutes: Namespace still commits its older copy over what other jobs on the tag wrote, so such jobs may want the nscloud-cache-exp-do-not-commit label. '0': always; 'off': never."
   flakehub-login:
     default: 'true'
     description: "Log in to FlakeHub with the job's OIDC token on the warm-bootstrap path (only happens when the job has `id-token: write`). Set 'false' when the job needs OIDC for something else but uses no FlakeHub cache or private flakes: a login without FlakeHub access fails after ~10-30s of retries. The Determinate installer action (cold volume, GitHub-hosted) has no such switch and still logs in whenever the job has OIDC: drop `id-token: write` from jobs that do not need it."
@@ -441,6 +459,39 @@ runs:
       run: |
         attic login "${{ inputs.attic-user }}" "${{ inputs.attic-push-url }}" "${{ inputs.attic-token }}"
 
+    # A shared cache tag is one volume for every job and repo that carries it: warn before it
+    # outgrows its size (then Namespace starts the next job on an EMPTY volume), optionally GC
+    # what no kept dev shell needs, and remember the store's state for the end-of-job notice.
+    - name: Store guard (Namespace Linux)
+      if: inputs.store-guard == 'true' && inputs.namespacelabs == 'true' && runner.os == 'Linux'
+      shell: bash
+      env:
+        CACHE_SIZE_GB: ${{ inputs.cache-size-gb }}
+        STORE_GC_AT_PERCENT: ${{ inputs.store-gc-at-percent }}
+        STORE_GC_TARGET_PERCENT: ${{ inputs.store-gc-target-percent }}
+      run: '"$GITHUB_ACTION_PATH/scripts/store-guard.sh" start'
+
+    # End-of-job half of the store guard (same post-hook trick as the macOS cache push
+    # above: a symlinked JS sub-action, kept out of `git status`).
+    - name: Link store guard hook (Namespace Linux)
+      if: inputs.store-guard == 'true' && inputs.namespacelabs == 'true' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        ln -sfn "$GITHUB_ACTION_PATH/store-guard" "$GITHUB_WORKSPACE/.atomi-nix-store-guard"
+        ex="$GITHUB_WORKSPACE/.git/info/exclude"
+        if [ -d "${ex%/*}" ] && ! grep -qxF '/.atomi-nix-store-guard' "$ex" 2>/dev/null; then
+          echo '/.atomi-nix-store-guard' >>"$ex"
+        fi
+
+    - name: Register store guard hook (Namespace Linux)
+      if: inputs.store-guard == 'true' && inputs.namespacelabs == 'true' && runner.os == 'Linux'
+      uses: ./.atomi-nix-store-guard
+      with:
+        script: ${{ github.action_path }}/scripts/store-guard.sh
+        cache-size-gb: ${{ inputs.cache-size-gb }}
+        idle-commit-notice-minutes: ${{ inputs.idle-commit-notice-minutes }}
+
     # `durian-shell <flake>#<shell> -c <cmd...>`: `nix develop -c` with the evaluated dev
     # env cached on the persisted /nix volume (Namespace Linux); a plain `nix develop`
     # everywhere else. See bin/durian-shell. bin/atomi-develop is the deprecated v3.7.0 name
@@ -449,11 +500,13 @@ runs:
       shell: bash
       env:
         CACHE_OK: ${{ inputs.devshell-cache == 'true' && inputs.namespacelabs == 'true' && runner.os == 'Linux' }}
+        SCOPE: ${{ inputs.devshell-scope }}
       run: |
         echo "$GITHUB_ACTION_PATH/bin" >> "$GITHUB_PATH"
         # The dev-env cache lives on the persisted /nix volume: opt in only there.
         if [ "$CACHE_OK" = "true" ]; then
           echo "DURIAN_SHELL_CACHE=1" >> "$GITHUB_ENV"
+          if [ -n "$SCOPE" ]; then echo "DURIAN_SHELL_SCOPE=$SCOPE" >> "$GITHUB_ENV"; fi
         fi
 
     # Parallel jobs write the volume back last-writer-wins: a job that cached only its own
@@ -464,6 +517,7 @@ runs:
       shell: bash
       env:
         DURIAN_SHELL_CACHE: '1'
+        DURIAN_SHELL_SCOPE: ${{ inputs.devshell-scope }}
         PREWARM: ${{ inputs.devshell-prewarm }}
       run: |
         set -euo pipefail
