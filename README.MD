@@ -134,10 +134,12 @@ unchanged and still require signatures.
 | `darwin-cache-path` | <p>Mount path for the Namespace cache volume used as a file:// binary cache on macOS</p> | `false` | `/tmp/nix-cache` |
 | `checkout` | <p>Whether to checkout the repository</p> | `false` | `true` |
 | `short-length` | <p>length for short values</p> | `false` | `7` |
-| `github-slug` | <p>Export the GITHUB<em><em></em>SLUG / GITHUB<em></em></em>SHORT environment variables (rlespinasse/github-slug-action, ~1s). Only release/tagging jobs need them: set 'false' for plain test jobs. The default keeps today's behaviour.</p> | `false` | `true` |
+| `github-slug` | <p>Export the GITHUB<em><em></em>SLUG / GITHUB<em></em></em>SHORT environment variables (plain bash, the same variables and rules as rlespinasse/github-slug-action v5). Only release/tagging jobs need them: set 'false' for plain test jobs. The default keeps today's behaviour.</p> | `false` | `true` |
+| `fetch-depth` | <p>Linux checkout depth. '0' (default) = full history and every branch and tag. Test/build jobs that never read history can set '1'.</p> | `false` | `0` |
+| `deepen` | <p>macOS: after the shallow checkout, fetch the full history of the current ref plus tags (~0.4-1.2 s). Test/build jobs that never read history can set 'false'.</p> | `false` | `true` |
 | `warm-bootstrap` | <p>Namespace Linux only. Re-create Nix from the persisted /nix cache volume without running the Determinate installer (~0.4s instead of ~6s). Any verification failure falls back to the installer. Set 'false' to always run the installer.</p> | `false` | `true` |
 | `warm-max-age-days` | <p>Namespace Linux only. A persisted Nix install older than this many days is refreshed by the installer instead of being re-used, so the Determinate Nix version still follows the installer</p> | `false` | `7` |
-| `devshell-cache` | <p>Namespace Linux only. Opt in to durian-shell's dev-shell cache. A repo that sets 'true' asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN<em>SHELL</em>PATHS): not on <code>self</code>/git metadata, nor on other files. Off by default: durian-shell is then plain <code>nix develop</code>.</p> | `false` | `false` |
+| `devshell-cache` | <p>Namespace Linux, and Namespace macOS when the store image is attached. Opt in to durian-shell's dev-shell cache. A repo that sets 'true' asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN<em>SHELL</em>PATHS): not on <code>self</code>/git metadata, nor on other files. Off by default: durian-shell is then plain <code>nix develop</code>.</p> | `false` | `false` |
 | `devshell-prewarm` | <p>With devshell-cache only. Space-separated installables (e.g. '.#ci .#cd'), written exactly as the jobs pass them to durian-shell. Every job makes sure ALL of them are cached (a miss is evaluated and stored), so a shell used by few jobs is not lost when parallel jobs write the cache volume back last-writer-wins. Empty: each job caches only the shell it runs.</p> | `false` | `""` |
 | `devshell-scope` | <p>With devshell-cache only. Which subfolder of the dev-shell cache this job's shells live in (lowercased, other characters become '-', plus a short hash of the exact value). Default: the repository, so repos sharing one cache tag never prune each other's shells (the keep-newest limit counts per scope). Empty: one shared folder, as in v3.8.0.</p> | `false` | `${{ github.repository }}` |
 | `store-guard` | <p>Namespace Linux only. Size warnings for the /nix cache volume (at 85% and over the size, where Namespace starts the next job on the tag from an EMPTY volume), the optional store GC below, and an end-of-job notice when the job changed nothing in /nix but will still commit its copy. Never fails the job. 'false' turns all of it off; 'always' also runs it on other Linux runners (self-hosted with a persistent /nix, tests).</p> | `false` | `true` |
@@ -152,6 +154,7 @@ unchanged and still require signatures.
 | `attic-user` | <p>Local server alias used by <code>attic login</code></p> | `false` | `primordial` |
 | `attic-url` | <p>Pull URL (Cloudflare-proxied; NARs are edge-cached)</p> | `false` | `https://attic.primordial.atomi.cloud` |
 | `attic-push-url` | <p>Push URL (DNS-only, bypasses the Cloudflare 100MB request-body limit that 413s large NAR uploads)</p> | `false` | `https://attic-direct.primordial.atomi.cloud` |
+| `attic-priority` | <p>Substituter priority of attic (lower wins; cache.nixos.org is 40). Empty: 35 on Linux, 45 on macOS (behind cache.nixos.org: attic's cold edge serves the big darwin NARs slowly).</p> | `false` | `""` |
 | `attic-public-key` | <p>Public key for attic</p> | `false` | `primordial:puK/sRe9wgfcreXNCR+rym2gwLuICwIWyAwTSG9ctkU=` |
 | `attic-cache` | <p>Attic cache name</p> | `false` | `primordial` |
 | `attic-token` | <p>Token for attic</p> | `false` | `""` |
@@ -210,8 +213,21 @@ It is the same Determinate Nix, the same `nix.conf`, the same daemon as an insta
 
 ### `github-slug: 'false'`
 
-`rlespinasse/github-slug-action` (~1 s) exports the `GITHUB_*_SLUG` / `GITHUB_*_SHORT` variables
-that release/tagging jobs use. Plain test jobs can turn it off.
+The action exports the `GITHUB_*_SLUG` / `GITHUB_*_SHORT` variables that release/tagging jobs use
+(the same names and values as `rlespinasse/github-slug-action` v5, written by a plain bash step; the
+test workflow diffs the two on every push). Plain test jobs can turn it off.
+
+### `fetch-depth` and `deepen`: skip history nobody reads
+
+Both defaults keep today's behaviour (full history, all tags). Test and build jobs that never read
+history can opt out:
+
+- Linux: `fetch-depth: '1'` (default `'0'`: every branch and tag).
+- macOS: `deepen: 'false'` (default `'true'`: after the shallow checkout, fetch the full history
+  of the current ref plus tags, about 0.4-1.2 s).
+
+Nix needs `revCount` only when a flake reads it from `self`; keep the defaults for those jobs and for
+release/tagging jobs.
 
 ### `durian-shell`: `nix develop -c` without re-evaluating
 

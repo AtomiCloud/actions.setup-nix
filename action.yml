@@ -15,7 +15,13 @@ inputs:
     description: length for short values
   github-slug:
     default: 'true'
-    description: "Export the GITHUB_*_SLUG / GITHUB_*_SHORT environment variables (rlespinasse/github-slug-action, ~1s). Only release/tagging jobs need them: set 'false' for plain test jobs. The default keeps today's behaviour."
+    description: "Export the GITHUB_*_SLUG / GITHUB_*_SHORT environment variables (plain bash, the same variables and rules as rlespinasse/github-slug-action v5). Only release/tagging jobs need them: set 'false' for plain test jobs. The default keeps today's behaviour."
+  fetch-depth:
+    default: '0'
+    description: "Linux checkout depth. '0' (default) = full history and every branch and tag. Test/build jobs that never read history can set '1'."
+  deepen:
+    default: 'true'
+    description: "macOS: after the shallow checkout, fetch the full history of the current ref plus tags (~0.4-1.2 s). Test/build jobs that never read history can set 'false'."
   warm-bootstrap:
     default: 'true'
     description: "Namespace Linux only. Re-create Nix from the persisted /nix cache volume without running the Determinate installer (~0.4s instead of ~6s). Any verification failure falls back to the installer. Set 'false' to always run the installer."
@@ -24,7 +30,7 @@ inputs:
     description: 'Namespace Linux only. A persisted Nix install older than this many days is refreshed by the installer instead of being re-used, so the Determinate Nix version still follows the installer'
   devshell-cache:
     default: 'false'
-    description: "Namespace Linux only. Opt in to durian-shell's dev-shell cache. A repo that sets 'true' asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN_SHELL_PATHS): not on `self`/git metadata, nor on other files. Off by default: durian-shell is then plain `nix develop`."
+    description: "Namespace Linux, and Namespace macOS when the store image is attached. Opt in to durian-shell's dev-shell cache. A repo that sets 'true' asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN_SHELL_PATHS): not on `self`/git metadata, nor on other files. Off by default: durian-shell is then plain `nix develop`."
   devshell-prewarm:
     default: ''
     description: "With devshell-cache only. Space-separated installables (e.g. '.#ci .#cd'), written exactly as the jobs pass them to durian-shell. Every job makes sure ALL of them are cached (a miss is evaluated and stored), so a shell used by few jobs is not lost when parallel jobs write the cache volume back last-writer-wins. Empty: each job caches only the shell it runs."
@@ -67,6 +73,9 @@ inputs:
   attic-push-url:
     default: 'https://attic-direct.primordial.atomi.cloud'
     description: 'Push URL (DNS-only, bypasses the Cloudflare 100MB request-body limit that 413s large NAR uploads)'
+  attic-priority:
+    default: ''
+    description: "Substituter priority of attic (lower wins; cache.nixos.org is 40). Empty: 35 on Linux, 45 on macOS (behind cache.nixos.org: attic's cold edge serves the big darwin NARs slowly)."
   attic-public-key:
     default: 'primordial:puK/sRe9wgfcreXNCR+rym2gwLuICwIWyAwTSG9ctkU='
     description: 'Public key for attic'
@@ -84,11 +93,57 @@ branding:
 runs:
   using: 'composite'
   steps:
+    # Plain bash instead of rlespinasse/github-slug-action: GitHub downloads every action a
+    # composite names, even skipped ones (that action pulls 3 repos: ~0.3 s on every job).
+    # Same variables and the same rules (rlespinasse/slugify-value, shortify-git-revision):
+    # test.yaml diffs this step against the real action on every push.
     - name: Inject enhanced GitHub environment variables
       if: inputs.github-slug == 'true'
-      uses: rlespinasse/github-slug-action@v5.x
-      with:
-        short-length: ${{ inputs.short-length }}
+      shell: bash
+      env:
+        SHORT_LENGTH: ${{ inputs.short-length }}
+        EVENT_REF: ${{ github.event.ref }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -euo pipefail
+        # slugify-value rules: strip one refs/<kind>/ prefix, runs of other characters become
+        # '-', no leading '-', cut to 63, no trailing '-'. url: '.' and '_' go too.
+        slug() { sed -E 's#refs/[^/]*/##;s/[^a-zA-Z0-9._-]+/-/g;s/^-*//' <<<"$1" | cut -c1-63 | sed -E 's/-*$//'; }
+        slug_url() { sed -E 's#refs/[^/]*/##;s/[^a-zA-Z0-9-]+/-/g;s/^-*//' <<<"$1" | cut -c1-63 | sed -E 's/-*$//'; }
+        emit() { # <NAME> <raw value>
+          local lo
+          lo="$(tr '[:upper:]' '[:lower:]' <<<"$2")"
+          {
+            echo "$1=$2"
+            echo "$1_SLUG=$(slug "$lo")"
+            echo "$1_SLUG_CS=$(slug "$2")"
+            echo "$1_SLUG_URL=$(slug_url "$lo")"
+            echo "$1_SLUG_URL_CS=$(slug_url "$2")"
+          } >>"$GITHUB_ENV"
+        }
+        short() { # <NAME> <sha>, like shortify-git-revision: git's abbreviation when the object
+          # exists here (git keeps at least 4 characters and extends an ambiguous prefix), else the
+          # first SHORT_LENGTH characters. Empty sha: nothing.
+          local s
+          [ -n "$2" ] || return 0
+          if git cat-file -e "$2" 2>/dev/null; then
+            s="$(git rev-parse "--short${SHORT_LENGTH:+=$SHORT_LENGTH}" "$2")"
+          else
+            s="${2:0:$SHORT_LENGTH}"
+          fi
+          { echo "$1=$2"; echo "$1_SHORT=$s"; } >>"$GITHUB_ENV"
+        }
+        emit GITHUB_REPOSITORY "$GITHUB_REPOSITORY"
+        emit GITHUB_REF "$GITHUB_REF"
+        emit GITHUB_HEAD_REF "${GITHUB_HEAD_REF:-}"
+        emit GITHUB_BASE_REF "${GITHUB_BASE_REF:-}"
+        emit GITHUB_EVENT_REF "$EVENT_REF"
+        emit GITHUB_REF_NAME "$GITHUB_REF_NAME"
+        emit GITHUB_REF_POINT "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+        emit GITHUB_REPOSITORY_OWNER_PART "${GITHUB_REPOSITORY%%/*}"
+        emit GITHUB_REPOSITORY_NAME_PART "${GITHUB_REPOSITORY#*/}"
+        short GITHUB_SHA "$GITHUB_SHA"
+        short GITHUB_EVENT_PULL_REQUEST_HEAD_SHA "$PR_HEAD_SHA"
 
     # NOTE (macOS casing): reftable refs would dodge the APFS case-collision problem,
     # but nix reads git flakes through libgit2, which cannot open reftable repos
@@ -127,7 +182,7 @@ runs:
       if: inputs.checkout == 'true' && inputs.auth-bot-app-id == '' && inputs.auth-bot-secret-key == '' && runner.os != 'macOS'
       uses: actions/checkout@v6
       with:
-        fetch-depth: 0
+        fetch-depth: ${{ inputs.fetch-depth }}
 
     - name: Checkout Repository (macOS)
       if: inputs.checkout == 'true' && inputs.auth-bot-app-id == '' && inputs.auth-bot-secret-key == '' && runner.os == 'macOS'
@@ -142,7 +197,7 @@ runs:
     # ONLY the current ref (full history) and grab tags — foreign branch refs are never
     # written, so they can never collide.
     - name: Deepen current ref (macOS)
-      if: inputs.checkout == 'true' && runner.os == 'macOS'
+      if: inputs.checkout == 'true' && runner.os == 'macOS' && inputs.deepen == 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -166,6 +221,7 @@ runs:
         ATTIC_URL: ${{ inputs.attic-url }}
         ATTIC_CACHE: ${{ inputs.attic-cache }}
         ATTIC_PUBLIC_KEY: ${{ inputs.attic-public-key }}
+        ATTIC_PRIORITY: ${{ inputs.attic-priority }}
         DARWIN_CACHE_PATH: ${{ inputs.darwin-cache-path }}
       run: |
         set -euo pipefail
@@ -187,7 +243,15 @@ runs:
           # Priority 35: ahead of cache.nixos.org (40) — attic is a full mirror
           # served zstd-compressed from the Cloudflare edge, which beats nixos'
           # xz over origin for both transfer and decompress. Misses fall through.
-          subs="$subs ${ATTIC_URL}/${ATTIC_CACHE}?priority=35"
+          # macOS: 45, behind cache.nixos.org. The iOS shells' big darwin NARs (LLVM,
+          # apple-sdk, ruby, python) come off a cold attic edge at well under 1 MB/s:
+          # a cold job took 1,058 s in `nix develop` with attic first and 53-56 s with
+          # cache.nixos.org first, which holds 185 of the 188 paths attic served.
+          attic_prio="${ATTIC_PRIORITY:-}"
+          if [ -z "$attic_prio" ]; then
+            if [ "$RUNNER_OS" = "macOS" ]; then attic_prio=45; else attic_prio=35; fi
+          fi
+          subs="$subs ${ATTIC_URL}/${ATTIC_CACHE}?priority=${attic_prio}"
           keys="$keys $ATTIC_PUBLIC_KEY"
         fi
 
@@ -249,7 +313,11 @@ runs:
       run: |
         set -euo pipefail
         target="$(readlink -f "$DARWIN_CACHE_PATH" 2>/dev/null || echo "$DARWIN_CACHE_PATH")"
-        sudo chown -R "$USER" "$target"
+        # The mount point is root-owned; what earlier jobs wrote is already ours, so chown
+        # only what is not (a recursive chown of the whole cache took ~0.4 s every job).
+        sudo chown "$USER" "$target"
+        find "$target" ! -user "$USER" -print0 | xargs -0 sudo chown "$USER" 2>/dev/null ||
+          sudo chown -R "$USER" "$target"
 
     # The cache action can mount ~/.cache/nix root-owned (same failure mode as the darwin
     # cache path above); nix then silently skips writing the eval cache, wasting the mount.
@@ -380,16 +448,25 @@ runs:
         } | sudo tee /etc/nix/nix.conf >/dev/null
 
         # Build users: the fresh VM has none; the daemon refuses to build without
-        # them. 8 is plenty for CI.
+        # them. 8 is plenty for CI. One sudo, the 8 users in parallel: 41 sequential
+        # sudo dscl calls took ~0.75 s of every warm job.
         if ! dscl . -read /Groups/nixbld >/dev/null 2>&1; then
-          sudo dscl . -create /Groups/nixbld PrimaryGroupID 30000
-          for i in $(seq 1 8); do
-            sudo dscl . -create "/Users/_nixbld$i" UniqueID $((30000 + i))
-            sudo dscl . -create "/Users/_nixbld$i" PrimaryGroupID 30000
-            sudo dscl . -create "/Users/_nixbld$i" UserShell /usr/bin/false
-            sudo dscl . -create "/Users/_nixbld$i" NFSHomeDirectory /var/empty
-            sudo dscl . -append /Groups/nixbld GroupMembership "_nixbld$i"
-          done
+          # (errexit is not inherited into the sudo shell: set it, and wait on every worker)
+          sudo bash -c '
+            set -e
+            dscl . -create /Groups/nixbld PrimaryGroupID 30000
+            pids=""
+            for i in 1 2 3 4 5 6 7 8; do
+              ( set -e
+                u="/Users/_nixbld$i"
+                dscl . -create "$u" UniqueID $((30000 + i))
+                dscl . -create "$u" PrimaryGroupID 30000
+                dscl . -create "$u" UserShell /usr/bin/false
+                dscl . -create "$u" NFSHomeDirectory /var/empty ) &
+              pids="$pids $!"
+            done
+            for p in $pids; do wait "$p"; done
+            dscl . -create /Groups/nixbld GroupMembership _nixbld1 _nixbld2 _nixbld3 _nixbld4 _nixbld5 _nixbld6 _nixbld7 _nixbld8'
         fi
 
         # Plain nix-daemon from the image's profile (no determinate-nixd supervisor
@@ -413,9 +490,10 @@ runs:
         PLIST
         sudo launchctl load -w /Library/LaunchDaemons/org.nixos.nix-daemon.plist
 
-        for _ in $(seq 1 30); do
+        # poll every 50 ms (a 1 s sleep cost a full second: the socket appears in ~0.1 s)
+        for _ in $(seq 1 600); do
           [ -S /nix/var/nix/daemon-socket/socket ] && break
-          sleep 1
+          sleep 0.05
         done
         [ -S /nix/var/nix/daemon-socket/socket ] || { echo "::error::nix-daemon socket never appeared"; exit 1; }
 
@@ -494,11 +572,12 @@ runs:
     - name: Add durian-shell to PATH
       shell: bash
       env:
-        CACHE_OK: ${{ inputs.devshell-cache == 'true' && inputs.namespacelabs == 'true' && runner.os == 'Linux' }}
+        CACHE_OK: ${{ inputs.devshell-cache == 'true' && inputs.namespacelabs == 'true' && (runner.os == 'Linux' || steps.niximg.outputs.attached == 'true') }}
         SCOPE: ${{ inputs.devshell-scope }}
       run: |
         echo "$GITHUB_ACTION_PATH/bin" >> "$GITHUB_PATH"
-        # The dev-env cache lives on the persisted /nix volume: opt in only there.
+        # The dev-env cache lives on the persisted /nix: the Linux cache volume, or the
+        # macOS store image (when it was attached). Opt in only there.
         if [ "$CACHE_OK" = "true" ]; then
           echo "DURIAN_SHELL_CACHE=1" >> "$GITHUB_ENV"
           if [ -n "$SCOPE" ]; then echo "DURIAN_SHELL_SCOPE=$SCOPE" >> "$GITHUB_ENV"; fi

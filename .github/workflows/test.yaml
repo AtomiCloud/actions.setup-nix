@@ -40,6 +40,27 @@ jobs:
           checkout: 'false'
           namespacelabs: ${{ matrix.namespacelabs }}
 
+      # github-slug is plain bash in this action: it must write exactly what
+      # rlespinasse/github-slug-action v5 writes (same names, same values). Snapshot ours,
+      # run the real action, compare.
+      - name: GitHub slug variables, snapshot (setup-nix)
+        shell: bash
+        run: |
+          set -euo pipefail
+          env | grep -E '^GITHUB_[A-Z_]*(_SLUG|_SLUG_CS|_SLUG_URL|_SLUG_URL_CS|_SHORT|_PART|_POINT)=' | sort > "$RUNNER_TEMP/slug-ours.txt"
+          cat "$RUNNER_TEMP/slug-ours.txt"
+          [ "$(wc -l < "$RUNNER_TEMP/slug-ours.txt")" -ge 40 ]
+      - uses: rlespinasse/github-slug-action@v5.x
+        with:
+          short-length: 7
+      - name: GitHub slug variables match the real action
+        shell: bash
+        run: |
+          set -euo pipefail
+          env | grep -E '^GITHUB_[A-Z_]*(_SLUG|_SLUG_CS|_SLUG_URL|_SLUG_URL_CS|_SHORT|_PART|_POINT)=' | sort > "$RUNNER_TEMP/slug-theirs.txt"
+          diff "$RUNNER_TEMP/slug-ours.txt" "$RUNNER_TEMP/slug-theirs.txt"
+          echo "slug variables are identical to rlespinasse/github-slug-action"
+
       - name: Verify Determinate Nix + lazy-trees
         run: |
           set -euo pipefail
@@ -48,6 +69,15 @@ jobs:
           lazy="$(nix config show lazy-trees)"
           echo "lazy-trees = $lazy"
           [ "$lazy" = "true" ]
+
+      - name: attic substituter priority (35 on Linux, 45 on macOS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          subs="$(nix config show substituters)"
+          echo "substituters = $subs"
+          if [ "$RUNNER_OS" = "macOS" ]; then want=45; else want=35; fi
+          echo "$subs" | tr ' ' '\n' | grep -F "attic.primordial.atomi.cloud/primordial" | grep -qF "priority=$want"
 
       - name: Time devshell evals (2nd should be eval-cache warm)
         run: |
@@ -60,9 +90,9 @@ jobs:
         run: |
           set -euo pipefail
           norm() { sed -E 's#nix-shell\.[A-Za-z0-9]+#nix-shell.X#g; s#nix-develop-[0-9]+-[0-9]+#nix-develop.X#g' | grep -vE '^(_|SHLVL|OLDPWD)=' | sort; }
-          # The cache is opt-in (setup-nix sets this only on Namespace Linux); GitHub-hosted Linux opts in
-          # here to exercise the cached path, macOS stays on the plain `nix develop` fall-through.
-          if [ "$RUNNER_OS" = "Linux" ]; then export DURIAN_SHELL_CACHE=1; fi
+          # The cache is opt-in (setup-nix sets this only on Namespace); opt in here on every OS
+          # to exercise the cached path (macOS too: the env is read from a private copy).
+          export DURIAN_SHELL_CACHE=1
           nix develop .#ci -c env | norm > /tmp/env-nix-develop.txt
           durian-shell .#ci -c env | norm > /tmp/env-first.txt
           durian-shell .#ci -c env | norm > /tmp/env-second.txt
@@ -76,6 +106,49 @@ jobs:
           DURIAN_SHELL_WARM_ONLY=1 DURIAN_SHELL_CACHE=0 durian-shell .#ci -c touch "$RUNNER_TEMP/warm-ran"
           [ ! -e "$RUNNER_TEMP/warm-ran" ]
           echo "durian-shell is equivalent to nix develop"
+
+      # A miss and a hit must both give the real dev env on every OS. On macOS the cached env used
+      # to be re-read through /dev/fd (shared file position): a hit fell back to plain nix develop
+      # and a miss ran the command with an EMPTY env (no CC, BSD tools first on PATH).
+      - name: durian-shell miss and hit both give the dev env
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DURIAN_SHELL_CACHE=1 DURIAN_SHELL_DIR="$RUNNER_TEMP/miss-hit"
+          # the probe runs inside the dev shell, so it must not expand here
+          # shellcheck disable=SC2016
+          probe='echo "$IN_NIX_SHELL:${CC:+cc}:$(command -v bash)"'
+          # durian-shell needs bash 4.4+ and passes straight through to nix develop on macOS's bash 3.2
+          # (Namespace's macOS images have a newer bash first on PATH, GitHub's runner does not):
+          # put the dev shell's bash first so this step exercises the cache on every OS.
+          nbash="$(nix develop .#ci -c bash -c 'command -v bash')"
+          PATH="$(dirname "$nbash"):$PATH"
+          export PATH
+          want="$(nix develop .#ci -c bash -c "$probe")"
+          echo "nix develop: $want"
+          case "$want" in impure:cc:/nix/store/*) ;; *) echo "unexpected probe output"; exit 1 ;; esac
+          rc=0
+          miss="$(durian-shell .#ci -c bash -c "$probe" 2>"$RUNNER_TEMP/miss.err")" || rc=$?
+          cat "$RUNNER_TEMP/miss.err"
+          echo "miss: rc=$rc out=$miss"
+          [ "$rc" -eq 0 ]
+          if ! grep -q '^\[durian-shell\] miss ' "$RUNNER_TEMP/miss.err"; then
+            echo "::error::durian-shell did not take the cached path; trace follows"
+            rm -rf "$DURIAN_SHELL_DIR"
+            bash -x "$(command -v durian-shell)" .#ci -c true 2>&1 | tail -80 || true
+            exit 1
+          fi
+          [ "$miss" = "$want" ]
+          rc=0
+          hit="$(durian-shell .#ci -c bash -c "$probe" 2>"$RUNNER_TEMP/hit.err")" || rc=$?
+          cat "$RUNNER_TEMP/hit.err"
+          echo "hit: rc=$rc out=$hit"
+          [ "$rc" -eq 0 ]
+          grep -q '^\[durian-shell\] hit ' "$RUNNER_TEMP/hit.err"
+          [ "$hit" = "$want" ]
+          # the private copy of the env is gone afterwards
+          [ -z "$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'durian-env.*' 2>/dev/null)" ]
+          echo "durian-shell miss and hit ok"
 
       # Deprecated v3.7.0 name: bin/atomi-develop maps ATOMI_DEVENV_* to DURIAN_SHELL_* (an
       # explicitly set old name wins), prints one deprecation line on stderr and execs
@@ -235,6 +308,39 @@ jobs:
           [ "$fmt" = "files" ]
           nix flake metadata "git+file://$PWD" > /dev/null
           echo "nix can read the workspace flake"
+
+  # fetch-depth (Linux) and deepen (macOS): the defaults keep today's full history (the main
+  # test job above runs with checkout: 'false'); the inputs turn it off for jobs that never
+  # read history.
+  checkout-depth:
+    name: Checkout depth inputs (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: GitHub Linux amd64
+            runner: ubuntu-latest
+          - name: GitHub macOS arm64
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: ./
+        with:
+          fetch-depth: '1'
+          deepen: 'false'
+          github-slug: 'false'
+          namespacelabs: 'false'
+      - name: History was not fetched, slug variables were not exported
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse --is-shallow-repository)" = "true" ]
+          [ -z "${GITHUB_REF_SLUG:-}" ]
+          echo "shallow checkout and no slug variables"
 
   # The store-guard post hook must survive anything a job does to its workspace after setup-nix
   # (v3.9.0 linked the hook into the workspace: a second checkout deleted it and the post step
