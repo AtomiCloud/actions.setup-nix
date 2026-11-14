@@ -95,17 +95,37 @@ plain() { exec -c env -i "${caller_env[@]}" nix develop "$@"; }
 # Original args, for any fall-through.
 orig=("$@")
 pin=""
+pinned=""
 run_tmp=""
+# pin_env: copy the just-opened cached env ONCE into a private file and read only that.
+# Reading /dev/fd/$pin more than once is not portable: Linux reopens the file at offset 0,
+# macOS dups the descriptor and shares its offset, so every later read starts at EOF (a hit
+# then fell back to plain nix develop, and a miss ran the command with an EMPTY env script).
+pin_env() {
+  pinned="$(mktemp "${TMPDIR:-/tmp}/durian-env.XXXXXX")" || return 1
+  cat <&"$pin" >"$pinned" || return 1
+  exec {pin}<&-
+  pin=""
+}
 fallback() {
   if [ -n "$pin" ]; then exec {pin}<&-; fi
+  if [ -n "$pinned" ]; then rm -f -- "$pinned"; fi
   # --warm: nothing to run, and an uncacheable shell is simply left alone
   [ "${DURIAN_SHELL_WARM_ONLY:-0}" != "1" ] || exit 0
   plain "${orig[@]}"
 }
 # --warm: the env is stored (hit or freshly evaluated); stop before running anything
-warm_done() { [ "${DURIAN_SHELL_WARM_ONLY:-0}" != "1" ] || exit 0; }
+warm_done() {
+  [ "${DURIAN_SHELL_WARM_ONLY:-0}" != "1" ] || {
+    if [ -n "$pinned" ]; then rm -f -- "$pinned"; fi
+    exit 0
+  }
+}
 
 [ "${DURIAN_SHELL_CACHE:-0}" = "1" ] || fallback
+# sha: sha256sum, or shasum -a 256 where it is missing (stock macOS). Same output format.
+# An array (not a function) because xargs below has to exec it.
+if command -v sha256sum >/dev/null 2>&1; then sha=(sha256sum); else sha=(shasum -a 256); fi
 if [ "$#" -lt 3 ] || [ "${2:-}" != "-c" ]; then fallback; fi
 installable="$1"
 shift 2
@@ -129,7 +149,7 @@ if [ -n "${DURIAN_SHELL_SCOPE:-}" ]; then
   # hash of the exact scope, so scopes that slug alike (Org/Repo-A, Org-Repo/A) stay apart
   scope="$(printf '%s' "$DURIAN_SHELL_SCOPE" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -c 'a-z0-9._-' '-')"
   case "$scope" in .*) scope="s-$scope" ;; esac
-  scope_hash="$(printf '%s' "$DURIAN_SHELL_SCOPE" | sha256sum | cut -c1-8)" || fallback
+  scope_hash="$(printf '%s' "$DURIAN_SHELL_SCOPE" | "${sha[@]}" | cut -c1-8)" || fallback
   cache_dir="$cache_dir/$scope-$scope_hash"
 fi
 if [ ! -d "$cache_dir" ]; then
@@ -138,6 +158,21 @@ fi
 if [ ! -d "$cache_dir" ] || [ ! -w "$cache_dir" ]; then fallback; fi
 
 # ---- key (fail closed: any error means no cache) ------------------------------------------
+# entry_meta <path>: every entry's path, type, mode and link target, one per line. GNU find
+# has -printf; BSD find (macOS) does not, so there use BSD stat. The two formats differ, but
+# the key also hashes uname/system, so a key never crosses OSes.
+if find . -maxdepth 0 -printf '' >/dev/null 2>&1; then
+  entry_meta() { find "$1" -printf '%p %y %m %l\n'; }
+else
+  entry_meta() { find "$1" -print0 | xargs -0 stat -f '%N %HT %Lp %Y'; }
+fi
+# prepend <file> <line>...: portable "sed -i 1i" (BSD sed's -i and i syntax differ)
+prepend() {
+  local f="$1" t
+  shift
+  t="$(mktemp "$f.XXXXXX")" || return 1
+  { printf '%s\n' "$@"; cat "$f"; } >"$t" && mv -f "$t" "$f"
+}
 hash_inputs() {
   nix --version || return 1
   uname -m || return 1
@@ -152,9 +187,9 @@ hash_inputs() {
     if [ -d "$p" ] || [ -L "$p" ] || [ -f "$p" ]; then
       # contents of files and symlinks (a symlink's content is hashed through it; a dangling
       # or directory link makes sha256sum fail, which fails the whole key) ...
-      find "$p" \( -type f -o -type l \) -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum || return 1
+      find "$p" \( -type f -o -type l \) -print0 | LC_ALL=C sort -z | xargs -0 -r "${sha[@]}" || return 1
       # ... plus every entry's type, mode and link target (directory entries, chmod +x)
-      find "$p" -printf '%p %y %m %l\n' | LC_ALL=C sort || return 1
+      entry_meta "$p" | LC_ALL=C sort || return 1
       # ... and which of them git tracks: a git flake only sees tracked files, so
       # `git add` of an already present file changes what nix evaluates
       git ls-files -- "$p" 2>/dev/null | LC_ALL=C sort || return 1
@@ -165,7 +200,7 @@ hash_inputs() {
 }
 key_input="$(hash_inputs)" || fallback
 [ -n "$key_input" ] || fallback
-key="$(printf '%s' "$key_input" | sha256sum | cut -c1-32)" || fallback
+key="$(printf '%s' "$key_input" | "${sha[@]}" | cut -c1-32)" || fallback
 [ "${#key}" -eq 32 ] || fallback
 env_file="$cache_dir/$key.sh"
 nocache_file="$cache_dir/$key.nocache"
@@ -191,6 +226,8 @@ store_paths_valid() {
   # Every store path the cached env mentions must still exist in the store.
   local f="$1" p
   while IFS= read -r p; do
+    # macOS stdenv envs name placeholder paths (32 x e) that are never realised
+    case "$p" in /nix/store/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-*) continue ;; esac
     [ -e "$p" ] || return 1
   done < <(grep -oE '/nix/store/[a-z0-9]{32}-[A-Za-z0-9._+-]+' "$f" | sort -u)
   return 0
@@ -208,22 +245,22 @@ registry_bash_fresh() {
   [ $(($(date +%s) - created)) -le $((10#$max * 86400)) ]
 }
 
-# run_cached <fd> <cmd...>: <fd> is an already open descriptor on the cached env (opened
+# run_cached <file> <cmd...>: <file> is the private copy pin_env made of the cached env (taken
 # before anything else looked at the file, so pruning/replacing it concurrently cannot
 # change or break this run).
 run_cached() {
-  local fd="$1" bash_bin
+  local envf="$1" bash_bin
   shift
   # The bash `nix develop` itself would use (resolved once at store time): the stdenv bash
   # lacks programmable completion etc., so a hook that is fine under nix develop could
   # fail under it.
-  bash_bin="$(sed -n 's/^# durian-bash: //p' "/dev/fd/$fd" | head -n1)"
+  bash_bin="$(sed -n 's/^# durian-bash: //p' "$envf" | head -n1)"
   [ -x "$bash_bin" ] || fallback
   # Like `nix develop`: run the generated script, THEN the command, unconditionally
   # (a shellHook whose last command fails must not skip it; set -e inside hooks is kept).
   # The command is spliced into the script text as shell-escaped literals, exactly how
   # nix does it: nothing the env script can set (variables, `set --`, `shift`) can change
-  # what runs. The descriptor (allocated >= 10, so the caller's own fds stay untouched).
+  # what runs.
   # nix develop runs the generated script as a standalone script (not sourced) from a
   # file under TMPDIR and stays the parent until it ends, removing the file afterwards. Do
   # the same, so a top-level `return` and $0/BASH_SOURCE (the file stays readable while the
@@ -232,15 +269,13 @@ run_cached() {
   # stdin/tty untouched, signal dispositions untouched, so Ctrl-C/job control behave as with
   # nix develop; the child's exit status, including 128+signal, is relayed unchanged), and
   # the file is removed when that child ends. (A wrapper killed outright cannot clean up;
-  # that leaves one small file in TMPDIR on a throw-away runner.) The script closes the
-  # pinned descriptor before the command runs, so the command sees the same fds.
+  # that leaves one small file in TMPDIR on a throw-away runner.)
   local q rc=0
   printf -v q '%q ' "$@"
   run_tmp="$(mktemp "${TMPDIR:-/tmp}/nix-shell.XXXXXX")" || fallback
-  trap 'rm -f -- "$run_tmp"' EXIT
+  trap 'rm -f -- "$run_tmp" "$pinned"' EXIT
   {
-    printf 'exec %s<&-\n' "$fd"
-    cat "/dev/fd/$fd"
+    cat "$envf"
     printf '\nexec %s\n' "$q"
   } >"$run_tmp" || {
     rm -f -- "$run_tmp"
@@ -250,21 +285,21 @@ run_cached() {
   exit "$rc"
 }
 
-if [ -f "$env_file" ] && { exec {pin}<"$env_file"; } 2>/dev/null &&
-  store_paths_valid "/dev/fd/$pin" && registry_bash_fresh "/dev/fd/$pin"; then
+if [ -f "$env_file" ] && { exec {pin}<"$env_file"; } 2>/dev/null && pin_env &&
+  store_paths_valid "$pinned" && registry_bash_fresh "$pinned"; then
   if [ "${DURIAN_SHELL_VERIFY:-0}" = "1" ]; then
     fresh="$(mktemp)"
     cmpf="$(mktemp)"
     if ! nix print-dev-env "$abs_installable" >"$fresh"; then
       log "verify: print-dev-env failed"
-      rm -f "$fresh" "$cmpf"
+      rm -f "$fresh" "$cmpf" "$pinned"
       exit 97
     fi
-    grep -v -e '^export NIX_GCROOT=' -e '^# durian-' "/dev/fd/$pin" >"$cmpf" || true
+    grep -v -e '^export NIX_GCROOT=' -e '^# durian-' "$pinned" >"$cmpf" || true
     if ! diff -q "$cmpf" "$fresh" >/dev/null; then
       log "VERIFY FAILED: cached env differs from a fresh evaluation (key $key)"
       diff "$cmpf" "$fresh" | head -n 20 >&2
-      rm -f "$cmpf" "$fresh"
+      rm -f "$cmpf" "$fresh" "$pinned"
       exit 97
     fi
     rm -f "$cmpf" "$fresh"
@@ -274,12 +309,15 @@ if [ -f "$env_file" ] && { exec {pin}<"$env_file"; } 2>/dev/null &&
   touch "$env_file" 2>/dev/null || true
   # envs stored before roots existed (or whose roots were removed) get them now
   if [ ! -L "$cache_dir/$key.root" ] || [ ! -L "$cache_dir/$key.bash.root" ]; then
-    add_roots "/dev/fd/$pin" "$key" || log "could not register GC roots for $key (a store GC may collect it)"
+    add_roots "$pinned" "$key" || log "could not register GC roots for $key (a store GC may collect it)"
   fi
   warm_done
-  run_cached "$pin" "$@"
+  run_cached "$pinned" "$@"
 fi
 if [ -n "$pin" ]; then exec {pin}<&-; fi
+if [ -n "$pinned" ]; then rm -f -- "$pinned"; fi
+pin=""
+pinned=""
 
 # ---- miss: evaluate once, store, then run exactly like a hit ------------------------------
 log "miss $key (evaluating)"
@@ -399,7 +437,7 @@ if [ -z "$gcroot" ]; then
   log "not caching: cannot recover NIX_GCROOT"
   fallback_clean
 fi
-sed -i "1i export NIX_GCROOT='$gcroot'" "$tmp"
+prepend "$tmp" "export NIX_GCROOT='$gcroot'" || fallback_clean
 # the interactive bash `nix develop` would run the script with (see run_cached); resolved
 # like nix does, through the flake registry's nixpkgs. Cost is paid on a miss only.
 bi=""
@@ -424,7 +462,7 @@ if [ -z "$bi" ]; then
   log "not caching: cannot resolve bashInteractive"
   fallback_clean
 fi
-sed -i -e "1i # durian-created: $(date +%s)" -e "1i # durian-bash-src: $bash_src" -e "1i # durian-bash: $bi/bin/bash" "$tmp"
+prepend "$tmp" "# durian-created: $(date +%s)" "# durian-bash-src: $bash_src" "# durian-bash: $bi/bin/bash" || fallback_clean
 chmod 0644 "$tmp"
 mv -f "$tmp" "$env_file"
 add_roots "$env_file" "$key" || log "could not register GC roots for $key (a store GC may collect it)"
@@ -443,6 +481,6 @@ if [ "$keep" -gt 0 ]; then
     [ "$n" -lt "$keep" ] || rm -f -- "$old" "${old%.sh}.root" "${old%.sh}.bash.root"
   done < <(ls -1t "$cache_dir"/*.sh 2>/dev/null)
 fi
-exec {pin}<"$env_file" || fallback
+{ exec {pin}<"$env_file" && pin_env; } || fallback
 warm_done
-run_cached "$pin" "$@"
+run_cached "$pinned" "$@"
