@@ -1,3 +1,8 @@
 self-hosted-runner:
   labels:
     - '*'
+paths:
+  .github/workflows/test.yaml:
+    ignore:
+      # store-guard/ is a node24 action (GitHub runs node24); this actionlint predates it
+      - 'invalid runner name "node24"'

@@ -33,7 +33,7 @@ inputs:
     description: "With devshell-cache only. Which subfolder of the dev-shell cache this job's shells live in (lowercased, other characters become '-', plus a short hash of the exact value). Default: the repository, so repos sharing one cache tag never prune each other's shells (the keep-newest limit counts per scope). Empty: one shared folder, as in v3.8.0."
   store-guard:
     default: 'true'
-    description: "Namespace Linux only. Size warnings for the /nix cache volume (at 85% and over the size, where Namespace starts the next job on the tag from an EMPTY volume), the optional store GC below, and an end-of-job notice when the job changed nothing in /nix but will still commit its copy. Never fails the job. 'false' turns all of it off."
+    description: "Namespace Linux only. Size warnings for the /nix cache volume (at 85% and over the size, where Namespace starts the next job on the tag from an EMPTY volume), the optional store GC below, and an end-of-job notice when the job changed nothing in /nix but will still commit its copy. Never fails the job. 'false' turns all of it off; 'always' also runs it on other Linux runners (self-hosted with a persistent /nix, tests)."
   cache-size-gb:
     default: '20'
     description: "Namespace Linux only. The cache volume size in GB that the job's nscloud-cache-size-NNgb label sets (Namespace default 20). The action cannot read runs-on labels: keep the two in step."
@@ -463,7 +463,7 @@ runs:
     # outgrows its size (then Namespace starts the next job on an EMPTY volume), optionally GC
     # what no kept dev shell needs, and remember the store's state for the end-of-job notice.
     - name: Store guard (Namespace Linux)
-      if: inputs.store-guard == 'true' && inputs.namespacelabs == 'true' && runner.os == 'Linux'
+      if: runner.os == 'Linux' && (inputs.store-guard == 'always' || (inputs.store-guard == 'true' && inputs.namespacelabs == 'true'))
       shell: bash
       env:
         CACHE_SIZE_GB: ${{ inputs.cache-size-gb }}
@@ -472,14 +472,16 @@ runs:
       run: '"$GITHUB_ACTION_PATH/scripts/store-guard.sh" start'
 
     # End-of-job half of the store guard: a JS sub-action whose `post:` runs the script above
-    # at end of job (composite actions cannot declare `post:`). Referenced as a remote action,
-    # so it lives in the runner's _actions dir: a later actions/checkout (e.g. setup-docker's)
-    # cleans the workspace, and a hook linked into the workspace would be gone by post time
-    # (v3.9.0 failed every such job in its post step). The hook only runs the script it is
-    # given, so the copy at the moving v3 tag is enough.
+    # at end of job (composite actions cannot declare `post:`). Referenced as a REMOTE action
+    # pinned to a commit, so it lives in the runner's _actions dir: a later actions/checkout
+    # (e.g. setup-docker's) cleans the workspace, and v3.9.0's hook, linked into the workspace,
+    # was gone by post time and failed the job. Pinned to the v3.9.0 commit (immutable; a
+    # moving tag may point at a release without store-guard/). The hook only runs the script
+    # path it is given and turns every error into a warning; bump the pin only if
+    # store-guard/ itself changes.
     - name: Register store guard hook (Namespace Linux)
-      if: inputs.store-guard == 'true' && inputs.namespacelabs == 'true' && runner.os == 'Linux'
-      uses: AtomiCloud/actions.setup-nix/store-guard@v3
+      if: runner.os == 'Linux' && (inputs.store-guard == 'always' || (inputs.store-guard == 'true' && inputs.namespacelabs == 'true'))
+      uses: AtomiCloud/actions.setup-nix/store-guard@24a8abfcbb485b243e45fff529b6330b7a9d9f0c # v3.9.0
       with:
         script: ${{ github.action_path }}/scripts/store-guard.sh
         cache-size-gb: ${{ inputs.cache-size-gb }}
