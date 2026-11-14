@@ -29,6 +29,22 @@
 #   ATOMI_DEVENV_VERIFY  set to 1 on a hit to also evaluate fresh and fail loudly if the
 #                        two environments differ (debugging a key that misses an input)
 #   ATOMI_DEVENV_KEEP    number of cached envs to keep (default 8)
+#
+#   atomi-develop --warm .#ci .#cd
+#
+# fills the cache for every listed shell without running anything (setup-nix calls it for
+# `devshell-prewarm`). Parallel jobs commit the cache volume last-writer-wins, so a job that
+# stored only its own shell can drop another job's; warming the same list in every job keeps
+# all of them. A no-op when the cache is off; never fails the caller.
+if [ "${1:-}" = "--warm" ]; then
+  shift
+  [ "${ATOMI_DEVENV_CACHE:-0}" = "1" ] || exit 0
+  for w in "$@"; do
+    ATOMI_DEVENV_WARM_ONLY=1 "${BASH_SOURCE[0]}" "$w" -c true ||
+      echo "[atomi-develop] warm $w failed (ignored)" >&2
+  done
+  exit 0
+fi
 # Pass-through BEFORE anything else (no variable assigned, no option set, no bash feature
 # beyond POSIX): the cache is off, the arguments are not `<flake>#<shell> -c cmd...`, or
 # this bash is too old (mapfile -d needs 4.4; macOS ships 3.2). Then this is exactly
@@ -59,8 +75,12 @@ pin=""
 run_tmp=""
 fallback() {
   if [ -n "$pin" ]; then exec {pin}<&-; fi
+  # --warm: nothing to run, and an uncacheable shell is simply left alone
+  [ "${ATOMI_DEVENV_WARM_ONLY:-0}" != "1" ] || exit 0
   plain "${orig[@]}"
 }
+# --warm: the env is stored (hit or freshly evaluated); stop before running anything
+warm_done() { [ "${ATOMI_DEVENV_WARM_ONLY:-0}" != "1" ] || exit 0; }
 
 [ "${ATOMI_DEVENV_CACHE:-0}" = "1" ] || fallback
 if [ "$#" -lt 3 ] || [ "${2:-}" != "-c" ]; then fallback; fi
@@ -209,6 +229,7 @@ if [ -f "$env_file" ] && { exec {pin}<"$env_file"; } 2>/dev/null &&
   fi
   log "hit $key"
   touch "$env_file" 2>/dev/null || true
+  warm_done
   run_cached "$pin" "$@"
 fi
 if [ -n "$pin" ]; then exec {pin}<&-; fi
@@ -372,4 +393,5 @@ while IFS= read -r old; do
   [ "$n" -lt "$keep" ] || rm -f -- "$old"
 done < <(ls -1t "$cache_dir"/*.sh 2>/dev/null)
 exec {pin}<"$env_file" || fallback
+warm_done
 run_cached "$pin" "$@"

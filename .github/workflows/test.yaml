@@ -74,6 +74,42 @@ jobs:
           [ "$rc" -eq 7 ]
           echo "atomi-develop is equivalent to nix develop"
 
+      # devshell-prewarm: `atomi-develop --warm` stores every listed shell, runs nothing,
+      # never fails the caller, and is a no-op with the cache off.
+      - name: atomi-develop --warm
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ATOMI_DEVENV_CACHE=1 ATOMI_DEVENV_DIR="$RUNNER_TEMP/warm-test"
+          atomi-develop --warm .#ci .#no-such-shell
+          [ "$(find "$ATOMI_DEVENV_DIR" -name '*.sh' | wc -l)" -eq 1 ]
+          atomi-develop --warm .#ci 2>&1 | tee /tmp/warm2.txt
+          grep -q '^\[atomi-develop\] hit ' /tmp/warm2.txt
+          atomi-develop .#ci -c true 2>&1 | tee /tmp/run.txt
+          grep -q '^\[atomi-develop\] hit ' /tmp/run.txt
+          ATOMI_DEVENV_CACHE=0 ATOMI_DEVENV_DIR="$RUNNER_TEMP/warm-off" atomi-develop --warm .#ci
+          [ ! -e "$RUNNER_TEMP/warm-off" ]
+          echo "atomi-develop --warm ok"
+
+      # flakehub-login: 'false' must skip the warm path's login even when the job has OIDC
+      # (stub daemon records the call; the real login is never attempted here).
+      - name: Warm-path FlakeHub login switch
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          stub="$RUNNER_TEMP/stub-bin"
+          mkdir -p "$stub"
+          printf '#!/bin/sh\necho "$*" >> "%s/calls"\nexit 1\n' "$stub" > "$stub/determinate-nixd"
+          chmod +x "$stub/determinate-nixd"
+          export ATOMI_NIX_BIN_DIR="$stub" ACTIONS_ID_TOKEN_REQUEST_URL=https://example.invalid ACTIONS_ID_TOKEN_REQUEST_TOKEN=x
+          FLAKEHUB_LOGIN=false ./scripts/linux-warm-nix.sh flakehub-login
+          [ ! -e "$stub/calls" ]
+          ./scripts/linux-warm-nix.sh flakehub-login
+          [ "$(cat "$stub/calls")" = "login github-action" ]
+          echo "flakehub-login switch ok"
+
       # Regression guard for the macOS checkout: the workspace must be a loose-ref
       # repo (nix reads git flakes via libgit2, which cannot open reftable), and nix
       # must be able to read it as a git flake.
