@@ -211,8 +211,21 @@ It is the same Determinate Nix, the same `nix.conf`, the same daemon as an insta
 
 ### `github-slug: 'false'`
 
-`rlespinasse/github-slug-action` (~1 s) exports the `GITHUB_*_SLUG` / `GITHUB_*_SHORT` variables
-that release/tagging jobs use. Plain test jobs can turn it off.
+The action exports the `GITHUB_*_SLUG` / `GITHUB_*_SHORT` variables that release/tagging jobs use
+(the same names and values as `rlespinasse/github-slug-action` v5, written by a plain bash step; the
+test workflow diffs the two on every push). Plain test jobs can turn it off.
+
+### `fetch-depth` and `deepen`: skip history nobody reads
+
+Both defaults keep today's behaviour (full history, all tags). Test and build jobs that never read
+history can opt out:
+
+- Linux: `fetch-depth: '1'` (default `'0'`: every branch and tag).
+- macOS: `deepen: 'false'` (default `'true'`: after the shallow checkout, fetch the full history
+  of the current ref plus tags, about 0.4-1.2 s).
+
+Nix needs `revCount` only when a flake reads it from `self`; keep the defaults for those jobs and for
+release/tagging jobs.
 
 ### `durian-shell`: `nix develop -c` without re-evaluating
 

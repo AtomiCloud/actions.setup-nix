@@ -16,6 +16,12 @@ inputs:
   github-slug:
     default: 'true'
     description: "Export the GITHUB_*_SLUG / GITHUB_*_SHORT environment variables (plain bash, the same variables and rules as rlespinasse/github-slug-action v5). Only release/tagging jobs need them: set 'false' for plain test jobs. The default keeps today's behaviour."
+  fetch-depth:
+    default: '0'
+    description: "Linux checkout depth. '0' (default) = full history and every branch and tag. Test/build jobs that never read history can set '1'."
+  deepen:
+    default: 'true'
+    description: "macOS: after the shallow checkout, fetch the full history of the current ref plus tags (~0.4-1.2 s). Test/build jobs that never read history can set 'false'."
   warm-bootstrap:
     default: 'true'
     description: "Namespace Linux only. Re-create Nix from the persisted /nix cache volume without running the Determinate installer (~0.4s instead of ~6s). Any verification failure falls back to the installer. Set 'false' to always run the installer."
@@ -87,6 +93,10 @@ branding:
 runs:
   using: 'composite'
   steps:
+    # Plain bash instead of rlespinasse/github-slug-action: GitHub downloads every action a
+    # composite names, even skipped ones (that action pulls 3 repos: ~0.3 s on every job).
+    # Same variables and the same rules (rlespinasse/slugify-value, shortify-git-revision):
+    # test.yaml diffs this step against the real action on every push.
     - name: Inject enhanced GitHub environment variables
       if: inputs.github-slug == 'true'
       shell: bash
@@ -126,10 +136,6 @@ runs:
         short GITHUB_SHA "$GITHUB_SHA"
         short GITHUB_EVENT_PULL_REQUEST_HEAD_SHA "$PR_HEAD_SHA"
 
-    # Plain bash instead of rlespinasse/github-slug-action: GitHub downloads every action a
-    # composite names, even skipped ones (that action pulls 3 repos: ~0.3 s on every job).
-    # Same variables and the same rules (rlespinasse/slugify-value, shortify-git-revision):
-    # test.yaml diffs this step against the real action on every push.
     # NOTE (macOS casing): reftable refs would dodge the APFS case-collision problem,
     # but nix reads git flakes through libgit2, which cannot open reftable repos
     # ("unsupported extension name extensions.refstorage") — so loose refs it is, and
@@ -167,7 +173,7 @@ runs:
       if: inputs.checkout == 'true' && inputs.auth-bot-app-id == '' && inputs.auth-bot-secret-key == '' && runner.os != 'macOS'
       uses: actions/checkout@v6
       with:
-        fetch-depth: 0
+        fetch-depth: ${{ inputs.fetch-depth }}
 
     - name: Checkout Repository (macOS)
       if: inputs.checkout == 'true' && inputs.auth-bot-app-id == '' && inputs.auth-bot-secret-key == '' && runner.os == 'macOS'
@@ -182,7 +188,7 @@ runs:
     # ONLY the current ref (full history) and grab tags — foreign branch refs are never
     # written, so they can never collide.
     - name: Deepen current ref (macOS)
-      if: inputs.checkout == 'true' && runner.os == 'macOS'
+      if: inputs.checkout == 'true' && runner.os == 'macOS' && inputs.deepen == 'true'
       shell: bash
       run: |
         set -euo pipefail
