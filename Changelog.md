@@ -1,3 +1,23 @@
+## [3.8.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.7.0...v3.8.0) (2026-11-14)
+
+
+### 🐛 Bug Fixes 🐛
+
+* a warm-only call that falls through runs nothing (review comments) ([f652d3a](https://github.com/AtomiCloud/actions.setup-nix/commit/f652d3a0153a92d75cad1d972decf2b104bbdfa2))
+* warm pass keeps every listed shell (review comments) ([6044b68](https://github.com/AtomiCloud/actions.setup-nix/commit/6044b68234e72fcefd244cc89c2d59f13b759f2e))
+
+
+### ✨ Features ✨
+
+* devshell-prewarm and flakehub-login inputs ([253bd8e](https://github.com/AtomiCloud/actions.setup-nix/commit/253bd8e12c83101d558c714af6690f39f62812f2))
+* durian-shell (was atomi-develop), devshell-prewarm and flakehub-login ([#28](https://github.com/AtomiCloud/actions.setup-nix/issues/28)) ([2ad0e87](https://github.com/AtomiCloud/actions.setup-nix/commit/2ad0e879283dad6db2c230273cbc7e89332823e3))
+* durian-shell replaces atomi-develop, old name kept as a shim ([e8d9ede](https://github.com/AtomiCloud/actions.setup-nix/commit/e8d9edede36b61d20f746d11b71eb81a3325ee55))
+
+
+### 📝 Documentation Updates 📝
+
+* devshell-prewarm and flakehub-login ([b325bf6](https://github.com/AtomiCloud/actions.setup-nix/commit/b325bf672d2d5a621fa21b256f96be4633fd3ea4))
+
 ## [3.7.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.6.0...v3.7.0) (2026-11-13)
 
 
