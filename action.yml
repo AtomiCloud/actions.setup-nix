@@ -121,8 +121,17 @@ runs:
             echo "$1_SLUG_URL_CS=$(slug_url "$2")"
           } >>"$GITHUB_ENV"
         }
-        short() { # <NAME> <sha>: first SHORT_LENGTH characters (empty sha: nothing, like the action)
-          [ -z "$2" ] || { echo "$1=$2"; echo "$1_SHORT=${2:0:$SHORT_LENGTH}"; } >>"$GITHUB_ENV"
+        short() { # <NAME> <sha>, like shortify-git-revision: git's abbreviation when the object
+          # exists here (git keeps at least 4 characters and extends an ambiguous prefix), else the
+          # first SHORT_LENGTH characters. Empty sha: nothing.
+          local s
+          [ -n "$2" ] || return 0
+          if git cat-file -e "$2" 2>/dev/null; then
+            s="$(git rev-parse "--short${SHORT_LENGTH:+=$SHORT_LENGTH}" "$2")"
+          else
+            s="${2:0:$SHORT_LENGTH}"
+          fi
+          { echo "$1=$2"; echo "$1_SHORT=$s"; } >>"$GITHUB_ENV"
         }
         emit GITHUB_REPOSITORY "$GITHUB_REPOSITORY"
         emit GITHUB_REF "$GITHUB_REF"
