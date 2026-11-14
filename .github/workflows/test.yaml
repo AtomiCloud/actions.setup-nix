@@ -235,3 +235,71 @@ jobs:
           [ "$fmt" = "files" ]
           nix flake metadata "git+file://$PWD" > /dev/null
           echo "nix can read the workspace flake"
+
+  # The store-guard post hook must survive anything a job does to its workspace after setup-nix
+  # (v3.9.0 linked the hook into the workspace: a second checkout deleted it and the post step
+  # failed the job). store-guard: 'always' runs the real guard + hook here on a GitHub runner.
+  store-guard-hook:
+    name: Store guard hook survives the job (GitHub Linux amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - name: Deepen current ref (nix needs revCount)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --unshallow --tags origin "$(git rev-parse HEAD)"
+          fi
+      - uses: ./
+        with:
+          checkout: 'false'
+          namespacelabs: 'false'
+          store-guard: 'always'
+      - name: Guard ran
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -s "$RUNNER_TEMP/atomi-store-guard.state" ]
+      # a second checkout cleans the workspace (git clean -ffdx)
+      - uses: actions/checkout@v6
+      # what Docker jobs do: setup-docker's own native checkout + buildx
+      - uses: AtomiCloud/actions.setup-docker@v2
+        with:
+          namespacelabs: 'false'
+      # the job cleans its workspace itself, and loses the guard's state file
+      - name: Clean the workspace and the guard state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clean -ffdx
+          rm -f "$RUNNER_TEMP/atomi-store-guard.state"
+      # the job passes only if every post step (the guard hook included) passes
+
+  # The hook itself turns every error into a warning: a missing script, a script that fails.
+  store-guard-hook-errors:
+    name: Store guard hook never fails a job (GitHub Linux amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: A failing script
+        shell: bash
+        run: printf '#!/bin/sh\necho failing on purpose >&2\nexit 3\n' >"$RUNNER_TEMP/fail.sh" && chmod +x "$RUNNER_TEMP/fail.sh"
+      - uses: ./store-guard
+        with:
+          script: /nonexistent/store-guard.sh
+          cache-size-gb: '20'
+          idle-commit-notice-minutes: '0'
+      - uses: ./store-guard
+        with:
+          script: ${{ runner.temp }}/fail.sh
+          cache-size-gb: 'not-a-number'
+          idle-commit-notice-minutes: 'off'
+      - uses: ./store-guard
+        with:
+          script: ''
+          cache-size-gb: ''
+          idle-commit-notice-minutes: ''
+      # the job passes only if all three post steps pass
