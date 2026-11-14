@@ -32,7 +32,9 @@
 #                        Add every other path your flake's .nix files read.
 #   DURIAN_SHELL_VERIFY  set to 1 on a hit to also evaluate fresh and fail loudly if the
 #                        two environments differ (debugging a key that misses an input)
-#   DURIAN_SHELL_KEEP    number of cached envs to keep per scope (default 8)
+#   DURIAN_SHELL_KEEP    number of cached envs to keep per scope (default 100; 0 or off:
+#                        never prune). An env file is ~80 KB; without a store GC, KEEP has
+#                        no other disk effect (pruning never frees store paths by itself).
 #   DURIAN_SHELL_SCOPE   optional owner of the envs, e.g. the repository (setup-nix sets
 #                        github.repository). Envs then live in DURIAN_SHELL_DIR/<slug>-<hash>/
 #                        and KEEP/pruning count only that scope, so many repos sharing one
@@ -47,15 +49,18 @@
 # fills the cache for every listed shell without running anything (setup-nix's
 # `devshell-prewarm` input calls it). Parallel jobs commit the cache volume
 # last-writer-wins, so a job that stored only its own shell can drop another job's; warming
-# the same list in every job keeps all of them. Keeps at least one cached env per listed shell (raises DURIAN_SHELL_KEEP for
-# the pass when needed). A no-op when the cache is off; never fails the caller.
+# the same list in every job keeps all of them. Keeps at least one cached env per listed
+# shell (raises DURIAN_SHELL_KEEP for the pass when needed). A no-op when the cache is off;
+# never fails the caller.
 if [ "${1:-}" = "--warm" ]; then
   shift
   [ "${DURIAN_SHELL_CACHE:-0}" = "1" ] || exit 0
   # pruning must not evict a shell this pass just stored: keep at least one per listed shell
-  keep="${DURIAN_SHELL_KEEP:-8}"
-  [ "$keep" -ge 1 ] 2>/dev/null || keep=8
-  [ "$keep" -ge "$#" ] || keep="$#"
+  keep="${DURIAN_SHELL_KEEP:-100}"
+  case "$keep" in off | 0) keep=0 ;; esac
+  [ "$keep" -ge 0 ] 2>/dev/null || keep=100
+  # 0 = never prune; otherwise at least one per listed shell
+  [ "$keep" -eq 0 ] || [ "$keep" -ge "$#" ] || keep="$#"
   for w in "$@"; do
     DURIAN_SHELL_KEEP="$keep" DURIAN_SHELL_WARM_ONLY=1 "${BASH_SOURCE[0]}" "$w" -c true ||
       echo "[durian-shell] warm $w failed (ignored)" >&2
@@ -424,17 +429,20 @@ chmod 0644 "$tmp"
 mv -f "$tmp" "$env_file"
 add_roots "$env_file" "$key" || log "could not register GC roots for $key (a store GC may collect it)"
 trap - EXIT
-# keep the newest N
-keep="${DURIAN_SHELL_KEEP:-8}"
-[ "$keep" -ge 1 ] 2>/dev/null || keep=8
-n=0
-# the env just written is never pruned; keep the newest others up to N in total
-# shellcheck disable=SC2012
-while IFS= read -r old; do
-  [ "$old" = "$env_file" ] && continue
-  n=$((n + 1))
-  [ "$n" -lt "$keep" ] || rm -f -- "$old" "${old%.sh}.root" "${old%.sh}.bash.root"
-done < <(ls -1t "$cache_dir"/*.sh 2>/dev/null)
+# keep the newest N (default 100; 0 or off: never prune)
+keep="${DURIAN_SHELL_KEEP:-100}"
+case "$keep" in off | 0) keep=0 ;; esac
+[ "$keep" -ge 0 ] 2>/dev/null || keep=100
+if [ "$keep" -gt 0 ]; then
+  n=0
+  # the env just written is never pruned; keep the newest others up to N in total
+  # shellcheck disable=SC2012
+  while IFS= read -r old; do
+    [ "$old" = "$env_file" ] && continue
+    n=$((n + 1))
+    [ "$n" -lt "$keep" ] || rm -f -- "$old" "${old%.sh}.root" "${old%.sh}.bash.root"
+  done < <(ls -1t "$cache_dir"/*.sh 2>/dev/null)
+fi
 exec {pin}<"$env_file" || fallback
 warm_done
 run_cached "$pin" "$@"

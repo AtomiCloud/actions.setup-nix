@@ -294,7 +294,7 @@ Every job then runs `durian-shell --warm .#ci .#cd` right after setup: a cached 
 check (~0.2 s), a missing one is evaluated and stored (its closure is realised too), so whichever
 job's volume wins holds all listed shells. Nothing runs inside the shells, a shell that cannot be
 cached is skipped, and the step never fails the job. The pass keeps at least one cached env per
-listed shell, raising `DURIAN_SHELL_KEEP` (default 8) for itself when the list is longer. Without
+listed shell, raising `DURIAN_SHELL_KEEP` (default 100) for itself when the list is longer. Without
 `devshell-cache` (and off Namespace Linux) the step does not run.
 
 ### `flakehub-login: 'false'`
@@ -315,14 +315,17 @@ stop a job from committing (`nscloud-cache-exp-do-not-commit`, `nscloud-cache-al
 an action cannot. What the action does to keep a shared tag usable:
 
 - **`devshell-scope` (default: the repository).** `durian-shell` keeps each repository's envs in its own
-  folder (`/nix/durian-shell/<owner>-<repo>-<hash>/`, the hash keeps scopes that slug alike apart) and its keep-newest limit (`DURIAN_SHELL_KEEP`, 8)
-  counts per folder. Before, one flat folder held every repository's envs, so with more than 8 shells
+  folder (`/nix/durian-shell/<owner>-<repo>-<hash>/`, the hash keeps scopes that slug alike apart) and its keep-newest limit (`DURIAN_SHELL_KEEP`, default 100; `0` or `off` never prunes)
+  counts per folder. An env file is about 80 KB, so 100 of them are about 8 MB per repository; without
+  a store GC that is the only disk KEEP affects (pruning an env never frees store paths by itself). Before, one flat folder held every repository's envs, so with more than 8 shells
   on a tag each repository's miss pruned another repository's envs. Set `devshell-scope: ''` for the
   old flat folder.
 - **Kept envs are GC roots.** Each stored env registers two indirect GC roots next to it
   (`<key>.root` -> its `NIX_GCROOT`, `<key>.bash.root` -> the bash it runs with); pruning an env
   removes them. A store GC therefore keeps everything a kept env needs (its whole closure) and frees
-  the rest. Envs stored before v3.9.0 get their roots on their next hit.
+  the rest. The roots only matter when a GC runs: then every kept env pins its closure, so with
+  `store-gc-at-percent` on, envs from old `flake.lock`s stay pinned until KEEP prunes them (envs of
+  one lock share almost all paths: 10 bun-base envs pinned 4.7 GiB in total). Envs stored before v3.9.0 get their roots on their next hit.
 - **`store-gc-at-percent` (opt-in).** At job start, when `/nix` uses at least this percent of
   `cache-size-gb`, run `nix store gc` down to `store-gc-target-percent` (default 60). Nothing on
   this volume ever shrinks `/nix` otherwise.

@@ -147,6 +147,13 @@ jobs:
           rm -f "$DURIAN_SHELL_DIR"/org-repo-a-*/*.root
           DURIAN_SHELL_SCOPE=Org/Repo-A durian-shell .#ci -c true
           [ "$(find "$DURIAN_SHELL_DIR"/org-repo-a-* -name '*.root' | wc -l)" -eq 2 ]
+          # KEEP off (or 0): nothing is ever pruned
+          DURIAN_SHELL_KEEP=off DURIAN_SHELL_SCOPE=Org/Repo-C durian-shell .#ci -c true
+          DURIAN_SHELL_KEEP=off DURIAN_SHELL_SCOPE=Org/Repo-C durian-shell .#releaser -c true
+          [ "$(find "$DURIAN_SHELL_DIR"/org-repo-c-* -name '*.sh' | wc -l)" -eq 2 ]
+          DURIAN_SHELL_KEEP=0 DURIAN_SHELL_SCOPE=Org/Repo-D durian-shell .#ci -c true
+          DURIAN_SHELL_KEEP=0 DURIAN_SHELL_SCOPE=Org/Repo-D durian-shell .#releaser -c true
+          [ "$(find "$DURIAN_SHELL_DIR"/org-repo-d-* -name '*.sh' | wc -l)" -eq 2 ]
           # scopes that slug alike still get separate folders
           DURIAN_SHELL_SCOPE=Org-Repo/A durian-shell .#ci -c true
           [ "$(find "$DURIAN_SHELL_DIR" -mindepth 1 -maxdepth 1 -name 'org-repo-a-*' | wc -l)" -eq 2 ]
