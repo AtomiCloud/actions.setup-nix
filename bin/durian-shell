@@ -292,14 +292,14 @@ if [ -f "$env_file" ] && { exec {pin}<"$env_file"; } 2>/dev/null && pin_env &&
     cmpf="$(mktemp)"
     if ! nix print-dev-env "$abs_installable" >"$fresh"; then
       log "verify: print-dev-env failed"
-      rm -f "$fresh" "$cmpf"
+      rm -f "$fresh" "$cmpf" "$pinned"
       exit 97
     fi
     grep -v -e '^export NIX_GCROOT=' -e '^# durian-' "$pinned" >"$cmpf" || true
     if ! diff -q "$cmpf" "$fresh" >/dev/null; then
       log "VERIFY FAILED: cached env differs from a fresh evaluation (key $key)"
       diff "$cmpf" "$fresh" | head -n 20 >&2
-      rm -f "$cmpf" "$fresh"
+      rm -f "$cmpf" "$fresh" "$pinned"
       exit 97
     fi
     rm -f "$cmpf" "$fresh"
