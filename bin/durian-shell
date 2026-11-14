@@ -123,6 +123,9 @@ warm_done() {
 }
 
 [ "${DURIAN_SHELL_CACHE:-0}" = "1" ] || fallback
+# sha: sha256sum, or shasum -a 256 where it is missing (stock macOS). Same output format.
+# An array (not a function) because xargs below has to exec it.
+if command -v sha256sum >/dev/null 2>&1; then sha=(sha256sum); else sha=(shasum -a 256); fi
 if [ "$#" -lt 3 ] || [ "${2:-}" != "-c" ]; then fallback; fi
 installable="$1"
 shift 2
@@ -146,7 +149,7 @@ if [ -n "${DURIAN_SHELL_SCOPE:-}" ]; then
   # hash of the exact scope, so scopes that slug alike (Org/Repo-A, Org-Repo/A) stay apart
   scope="$(printf '%s' "$DURIAN_SHELL_SCOPE" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -c 'a-z0-9._-' '-')"
   case "$scope" in .*) scope="s-$scope" ;; esac
-  scope_hash="$(printf '%s' "$DURIAN_SHELL_SCOPE" | sha256sum | cut -c1-8)" || fallback
+  scope_hash="$(printf '%s' "$DURIAN_SHELL_SCOPE" | "${sha[@]}" | cut -c1-8)" || fallback
   cache_dir="$cache_dir/$scope-$scope_hash"
 fi
 if [ ! -d "$cache_dir" ]; then
@@ -184,7 +187,7 @@ hash_inputs() {
     if [ -d "$p" ] || [ -L "$p" ] || [ -f "$p" ]; then
       # contents of files and symlinks (a symlink's content is hashed through it; a dangling
       # or directory link makes sha256sum fail, which fails the whole key) ...
-      find "$p" \( -type f -o -type l \) -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum || return 1
+      find "$p" \( -type f -o -type l \) -print0 | LC_ALL=C sort -z | xargs -0 -r "${sha[@]}" || return 1
       # ... plus every entry's type, mode and link target (directory entries, chmod +x)
       entry_meta "$p" | LC_ALL=C sort || return 1
       # ... and which of them git tracks: a git flake only sees tracked files, so
@@ -197,7 +200,7 @@ hash_inputs() {
 }
 key_input="$(hash_inputs)" || fallback
 [ -n "$key_input" ] || fallback
-key="$(printf '%s' "$key_input" | sha256sum | cut -c1-32)" || fallback
+key="$(printf '%s' "$key_input" | "${sha[@]}" | cut -c1-32)" || fallback
 [ "${#key}" -eq 32 ] || fallback
 env_file="$cache_dir/$key.sh"
 nocache_file="$cache_dir/$key.nocache"
