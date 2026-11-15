@@ -18,7 +18,6 @@ try {
   } else {
     const env = {
       ...process.env,
-      CACHE_SIZE_GB: getInput('cache-size-gb'),
       IDLE_COMMIT_NOTICE_MINUTES: getInput('idle-commit-notice-minutes'),
     };
     const r = spawnSync('bash', [script, 'end'], { stdio: 'inherit', env, timeout: 120000 });
