@@ -176,6 +176,8 @@ working.
 
 **Upgrading from v3 to v4 (breaking changes).** Change `@v3` to `@v4`, then:
 
+`v3.11.0` carries these v4 changes by mistake (it was cut as a minor release). Use `@v4` for them, or pin `@v3.10.0` to stay on v3.
+
 1. **Delete the removed `with:` lines**: the store-GC inputs and the cache-size input (their exact names are in the v4.0.0 BREAKING CHANGES list in `Changelog.md`). A caller that relied on the store GC must run its own `nix store gc` step. The kept dev shells stay GC roots, so such a step keeps them.
 2. **`devshell-cache` is now `'true'` by default.** Callers that want plain `nix develop` set `devshell-cache: 'false'`. A repo keeping it on asserts its dev shell depends only on `flake.nix`, `flake.lock` and `nix/**` (plus `DURIAN_SHELL_PATHS`). `checkout` and `github-slug` already defaulted to `'true'`; their `with:` lines can go too when they say `'true'`.
 3. **`DURIAN_SHELL_KEEP` defaults to 64** (was 100). Set the variable to keep a different number.
