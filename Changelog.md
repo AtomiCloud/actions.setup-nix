@@ -1,3 +1,70 @@
+## [3.11.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.10.0...v3.11.0) (2026-11-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* see the table above.
+
+
+
+https://claude.ai/code/session_012quaZ4kJLKBhnSHRN44nm8
+
+
+<!-- This is an auto-generated comment: release notes by coderabbit.ai
+-->
+
+<!-- coderabbit-ai-generated:v1 -->
+
+## Summary by CodeRabbit
+
+* **New Features**
+* Dev-shell caching is enabled by default. Cache retention now defaults
+to 64 shell environments.
+* Store-usage checks report usage against the mounted filesystem’s size,
+with warnings starting at 85%; automatic garbage collection is no longer
+performed.
+* **Changes**
+* Nix configuration overrides and image-attachment settings now use
+`DURIAN_*` environment variable names.
+* Removed the deprecated `atomi-develop` compatibility command and
+store-guard cache-size and GC controls.
+* **Documentation**
+* Updated setup examples and upgrade guidance for v4, including revised
+defaults and configuration changes.
+
+<!-- end of auto-generated comment: release notes by coderabbit.ai -->
+* the store GC is removed: inputs store-gc-at-percent,
+store-gc-target-percent and cache-size-gb no longer exist (delete them from
+`with:`); a caller that needs a GC runs its own `nix store gc` step.
+The store guard keeps its size warning (85% warning, error over the size) but
+reads the size of the volume mounted at /nix; store-guard and
+idle-commit-notice-minutes stay.
+/nix/atomi-bootstrap is renamed /nix/durian-bootstrap (the first job per cache
+volume runs the installer once). Internal names atomi-store-guard.state,
+.atomi-nix-cache-push, atomi-nix-daemon.log and __ATOMI_NIXCONF__ become
+durian-*. A test asserts the default of 64 kept shells.
+* devshell-cache defaults to 'true' (was 'false').
+DURIAN_SHELL_KEEP defaults to 64 (was 100).
+ATOMI_NIX_STATE_DIR, ATOMI_NIX_ETC_DIR, ATOMI_NIX_BIN_DIR and
+ATOMI_NIX_IMAGE_ATTACHED are renamed DURIAN_NIX_*.
+The deprecated bin/atomi-develop shim (ATOMI_DEVENV_*) is removed.
+
+### 🐛 Bug Fixes 🐛
+
+* pin the store guard hook to the v4 commit ([8f77a04](https://github.com/AtomiCloud/actions.setup-nix/commit/8f77a0438aef0acd67b4329ae3c37cb50dffed37))
+
+
+### ✨ Features ✨
+
+* KEEP 64, devshell-cache on, ATOMI_NIX_* to DURIAN_NIX_* ([908b112](https://github.com/AtomiCloud/actions.setup-nix/commit/908b11226f9375487189ea5300e8f2b83b4e328a))
+* remove store GC and cache-size input, read real volume size ([11719dd](https://github.com/AtomiCloud/actions.setup-nix/commit/11719dd7422357488272a5e2c5ac80eba82de832))
+* v4 (store GC and cache-size-gb removed, DURIAN_* names, keep 64, devshell-cache on) ([#34](https://github.com/AtomiCloud/actions.setup-nix/issues/34)) ([17e0679](https://github.com/AtomiCloud/actions.setup-nix/commit/17e0679d7d539bb5b2564b39034ec6a8c7ab23cd))
+
+
+### 📝 Documentation Updates 📝
+
+* devshell-cache is on by default in the cache contract section ([f912449](https://github.com/AtomiCloud/actions.setup-nix/commit/f9124492de8cfad67903be43453371c22c2e6de8))
+
 ## [3.10.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.9.1...v3.10.0) (2026-11-14)
 
 
