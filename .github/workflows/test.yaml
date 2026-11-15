@@ -150,29 +150,6 @@ jobs:
           [ -z "$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'durian-env.*' 2>/dev/null)" ]
           echo "durian-shell miss and hit ok"
 
-      # Deprecated v3.7.0 name: bin/atomi-develop maps ATOMI_DEVENV_* to DURIAN_SHELL_* (an
-      # explicitly set old name wins), prints one deprecation line on stderr and execs
-      # durian-shell. Goes away with the shim in v4.
-      - name: atomi-develop shim (deprecated name)
-        shell: bash
-        run: |
-          set -euo pipefail
-          rc=0
-          atomi-develop .#ci -c bash -c 'exit 7' 2>/tmp/shim-err.txt || rc=$?
-          [ "$rc" -eq 7 ]
-          [ "$(grep -c '^\[atomi-develop\] deprecated: renamed to durian-shell' /tmp/shim-err.txt)" -eq 1 ]
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            export DURIAN_SHELL_CACHE=1
-            ATOMI_DEVENV_DIR="$RUNNER_TEMP/shim" atomi-develop .#ci -c true 2>&1 | tee /tmp/shim1.txt
-            grep -q '^\[durian-shell\] miss ' /tmp/shim1.txt
-            [ "$(find "$RUNNER_TEMP/shim" -name '*.sh' | wc -l)" -eq 1 ]
-            ATOMI_DEVENV_DIR="$RUNNER_TEMP/shim" atomi-develop .#ci -c true 2>&1 | tee /tmp/shim2.txt
-            grep -q '^\[durian-shell\] hit ' /tmp/shim2.txt
-            ATOMI_DEVENV_CACHE=0 ATOMI_DEVENV_DIR="$RUNNER_TEMP/shim" atomi-develop .#ci -c true 2>&1 | tee /tmp/shim3.txt
-            if grep -q '^\[durian-shell\]' /tmp/shim3.txt; then exit 1; fi
-          fi
-          echo "atomi-develop shim ok"
-
       # devshell-prewarm: `durian-shell --warm` stores every listed shell, runs nothing,
       # never fails the caller, and is a no-op with the cache off.
       - name: durian-shell --warm
@@ -232,6 +209,24 @@ jobs:
           [ "$(find "$DURIAN_SHELL_DIR" -mindepth 1 -maxdepth 1 -name 'org-repo-a-*' | wc -l)" -eq 2 ]
           echo "scopes and roots ok"
 
+      # DURIAN_SHELL_KEEP unset: the default keeps 64 envs per scope (the newest 63 plus the one
+      # just stored), whatever the caller's environment says elsewhere.
+      - name: durian-shell keeps 64 envs by default
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset DURIAN_SHELL_KEEP
+          export DURIAN_SHELL_CACHE=1 DURIAN_SHELL_DIR="$RUNNER_TEMP/keep64" DURIAN_SHELL_SCOPE=test/keep64
+          durian-shell .#ci -c true
+          d="$(dirname "$(find "$DURIAN_SHELL_DIR" -name '*.sh' | head -n1)")"
+          for i in $(seq 1 70); do touch -d "2020-01-01 00:00:$((i % 60))" "$d/fake-$i.sh"; done
+          durian-shell .#releaser -c true
+          n="$(find "$d" -name '*.sh' | wc -l)"
+          echo "envs kept: $n"
+          [ "$n" -eq 64 ]
+          echo "default KEEP is 64"
+
       # store guard: size warnings (faked usage), the idle-commit notice, and its switches.
       - name: Store guard warnings and notice
         if: runner.os == 'Linux'
@@ -239,7 +234,7 @@ jobs:
         run: |
           set -euo pipefail
           g=./scripts/store-guard.sh
-          export STORE_GUARD_STATE="$RUNNER_TEMP/sg.state" DURIAN_SHELL_DIR="$RUNNER_TEMP/sg-shells" CACHE_SIZE_GB=10
+          export STORE_GUARD_STATE="$RUNNER_TEMP/sg.state" DURIAN_SHELL_DIR="$RUNNER_TEMP/sg-shells" STORE_GUARD_SIZE_BYTES=$((10 * 1024 ** 3))
           mkdir -p "$DURIAN_SHELL_DIR"
           STORE_GUARD_USED_BYTES=$((5 * 1024 ** 3)) $g start | tee /tmp/sg1.txt
           if grep -q '^::' /tmp/sg1.txt; then exit 1; fi
@@ -268,33 +263,31 @@ jobs:
           mkdir -p "$stub"
           printf '#!/bin/sh\necho "$*" >> "%s/calls"\nexit 1\n' "$stub" > "$stub/determinate-nixd"
           chmod +x "$stub/determinate-nixd"
-          export ATOMI_NIX_BIN_DIR="$stub" ACTIONS_ID_TOKEN_REQUEST_URL=https://example.invalid ACTIONS_ID_TOKEN_REQUEST_TOKEN=x
+          export DURIAN_NIX_BIN_DIR="$stub" ACTIONS_ID_TOKEN_REQUEST_URL=https://example.invalid ACTIONS_ID_TOKEN_REQUEST_TOKEN=x
           FLAKEHUB_LOGIN=false ./scripts/linux-warm-nix.sh flakehub-login
           [ ! -e "$stub/calls" ]
           ./scripts/linux-warm-nix.sh flakehub-login
           [ "$(cat "$stub/calls")" = "login github-action" ]
           echo "flakehub-login switch ok"
 
-      # store-gc-at-percent: a full store GC keeps every path a kept env needs (it runs last:
-      # it collects everything else on this runner, flake inputs included).
-      - name: Store GC keeps live dev shells
+      # The action never runs a GC, but kept dev shells are GC roots: a full store GC run by the
+      # caller keeps every path a kept env needs (it runs last: it collects everything else on
+      # this runner, flake inputs included).
+      - name: A caller GC keeps live dev shells
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
           export DURIAN_SHELL_CACHE=1 DURIAN_SHELL_DIR="$RUNNER_TEMP/gc-shells" DURIAN_SHELL_SCOPE=test/gc
           durian-shell .#ci -c true
-          STORE_GUARD_STATE="$RUNNER_TEMP/gc.state" CACHE_SIZE_GB=1 STORE_GC_AT_PERCENT=1 STORE_GC_TARGET_PERCENT=0 \
-            ./scripts/store-guard.sh start | tee /tmp/gc.txt
-          grep -q '^\[store-guard\] GC done in ' /tmp/gc.txt
-          if grep -q 'GC failed' /tmp/gc.txt; then exit 1; fi
+          nix store gc 2>&1 | tee /tmp/gc.txt
           f="$(find "$DURIAN_SHELL_DIR"/test-gc-* -name '*.sh')"
           grep -oE '/nix/store/[a-z0-9]{32}-[A-Za-z0-9._+-]+' "$f" | sort -u | while IFS= read -r p; do
             [ -e "$p" ] || { echo "collected: $p"; exit 1; }
           done
           durian-shell .#ci -c true 2>&1 | tee /tmp/gc-hit.txt
           grep -q '^\[durian-shell\] hit ' /tmp/gc-hit.txt
-          echo "store GC kept the live dev shell"
+          echo "a caller GC kept the live dev shell"
 
       # Regression guard for the macOS checkout: the workspace must be a loose-ref
       # repo (nix reads git flakes via libgit2, which cannot open reftable), and nix
@@ -367,7 +360,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [ -s "$RUNNER_TEMP/atomi-store-guard.state" ]
+          [ -s "$RUNNER_TEMP/durian-store-guard.state" ]
       # a second checkout cleans the workspace (git clean -ffdx)
       - uses: actions/checkout@v6
       # what Docker jobs do: setup-docker's own native checkout + buildx
@@ -380,7 +373,7 @@ jobs:
         run: |
           set -euo pipefail
           git clean -ffdx
-          rm -f "$RUNNER_TEMP/atomi-store-guard.state"
+          rm -f "$RUNNER_TEMP/durian-store-guard.state"
       # the job passes only if every post step (the guard hook included) passes
 
   # The hook itself turns every error into a warning: a missing script, a script that fails.
@@ -396,16 +389,13 @@ jobs:
       - uses: ./store-guard
         with:
           script: /nonexistent/store-guard.sh
-          cache-size-gb: '20'
           idle-commit-notice-minutes: '0'
       - uses: ./store-guard
         with:
           script: ${{ runner.temp }}/fail.sh
-          cache-size-gb: 'not-a-number'
           idle-commit-notice-minutes: 'off'
       - uses: ./store-guard
         with:
           script: ''
-          cache-size-gb: ''
           idle-commit-notice-minutes: ''
       # the job passes only if all three post steps pass

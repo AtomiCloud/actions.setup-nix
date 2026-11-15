@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # change this
-      - uses: AtomiCloud/actions.setup-nix@v3
+      - uses: AtomiCloud/actions.setup-nix@v4
 ```
 
 ## macOS on Namespace runners
@@ -70,7 +70,7 @@ jobs:
       - nscloud-cache-size-20gb # minimum cache size label is 20GB
       - nscloud-cache-tag-atomi-nix-darwin-cache # org convention for darwin
     steps:
-      - uses: AtomiCloud/actions.setup-nix@v3
+      - uses: AtomiCloud/actions.setup-nix@v4
         with:
           namespacelabs: 'true'
       - run: nix develop .#default -c true
@@ -139,13 +139,10 @@ unchanged and still require signatures.
 | `deepen` | <p>macOS: after the shallow checkout, fetch the full history of the current ref plus tags (~0.4-1.2 s). Test/build jobs that never read history can set 'false'.</p> | `false` | `true` |
 | `warm-bootstrap` | <p>Namespace Linux only. Re-create Nix from the persisted /nix cache volume without running the Determinate installer (~0.4s instead of ~6s). Any verification failure falls back to the installer. Set 'false' to always run the installer.</p> | `false` | `true` |
 | `warm-max-age-days` | <p>Namespace Linux only. A persisted Nix install older than this many days is refreshed by the installer instead of being re-used, so the Determinate Nix version still follows the installer</p> | `false` | `7` |
-| `devshell-cache` | <p>Namespace Linux, and Namespace macOS when the store image is attached. Opt in to durian-shell's dev-shell cache. A repo that sets 'true' asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN<em>SHELL</em>PATHS): not on <code>self</code>/git metadata, nor on other files. Off by default: durian-shell is then plain <code>nix develop</code>.</p> | `false` | `false` |
+| `devshell-cache` | <p>Namespace Linux, and Namespace macOS when the store image is attached. On by default: durian-shell's dev-shell cache. A repo keeping it on asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN<em>SHELL</em>PATHS): not on <code>self</code>/git metadata, nor on other files. Set 'false' to make durian-shell plain <code>nix develop</code>.</p> | `false` | `true` |
 | `devshell-prewarm` | <p>With devshell-cache only. Space-separated installables (e.g. '.#ci .#cd'), written exactly as the jobs pass them to durian-shell. Every job makes sure ALL of them are cached (a miss is evaluated and stored), so a shell used by few jobs is not lost when parallel jobs write the cache volume back last-writer-wins. Empty: each job caches only the shell it runs.</p> | `false` | `""` |
 | `devshell-scope` | <p>With devshell-cache only. Which subfolder of the dev-shell cache this job's shells live in (lowercased, other characters become '-', plus a short hash of the exact value). Default: the repository, so repos sharing one cache tag never prune each other's shells (the keep-newest limit counts per scope). Empty: one shared folder, as in v3.8.0.</p> | `false` | `${{ github.repository }}` |
 | `store-guard` | <p>Namespace Linux only. Size warnings for the /nix cache volume (at 85% and over the size, where Namespace starts the next job on the tag from an EMPTY volume), the optional store GC below, and an end-of-job notice when the job changed nothing in /nix but will still commit its copy. Never fails the job. 'false' turns all of it off; 'always' also runs it on other Linux runners (self-hosted with a persistent /nix, tests).</p> | `false` | `true` |
-| `cache-size-gb` | <p>Namespace Linux only. The cache volume size in GB that the job's nscloud-cache-size-NNgb label sets (Namespace default 20). The action cannot read runs-on labels: keep the two in step.</p> | `false` | `20` |
-| `store-gc-at-percent` | <p>Namespace Linux only, with store-guard. At job start, run a Nix store GC when /nix uses at least this percent of cache-size-gb (e.g. '80'). Every dev shell durian-shell keeps is a GC root, so only paths no kept shell or Nix profile needs are freed. Empty: never.</p> | `false` | `""` |
-| `store-gc-target-percent` | <p>With store-gc-at-percent. Free down to this percent of cache-size-gb (it stops earlier if everything left is still needed).</p> | `false` | `60` |
 | `idle-commit-notice-minutes` | <p>With store-guard. End-of-job notice when the job changed nothing in /nix (no store path, no dev shell) and ran at least this many minutes: Namespace still commits its older copy over what other jobs on the tag wrote, so such jobs may want the nscloud-cache-exp-do-not-commit label. '0': always; 'off': never.</p> | `false` | `0` |
 | `flakehub-login` | <p>Log in to FlakeHub with the job's OIDC token on the warm-bootstrap path (only happens when the job has <code>id-token: write</code>). Set 'false' when the job needs OIDC for something else but uses no FlakeHub cache or private flakes: a login without FlakeHub access fails after ~10-30s of retries. The Determinate installer action (cold volume, GitHub-hosted) has no such switch and still logs in whenever the job has OIDC: drop <code>id-token: write</code> from jobs that do not need it.</p> | `false` | `true` |
 | `auth-bot-app-id` | <p>App Id for auth bot</p> | `false` | `""` |
@@ -177,17 +174,17 @@ This action is a `composite` action.
 These opt-out / opt-in knobs cut the fixed per-job cost and keep a shared cache volume healthy. Defaults keep every existing caller
 working.
 
-**Which defaults change for existing callers?** On Namespace Linux runners: (1) the
-Determinate installer is no longer run when the persisted `/nix` is valid (`warm-bootstrap`,
-default `'true'`). The result is the same Determinate Nix, `nix.conf` and daemon, and any failure
-falls back to the installer. **Opt out** with `warm-bootstrap: 'false'` (the installer runs
-every job, as before). (2) Since v3.9.0, `store-guard` (default `'true'`) checks the volume's size at job
-start and end (warning at 85%, error annotation over the size) and adds an end-of-job notice for jobs
-that changed nothing; it never fails a job and never deletes anything unless `store-gc-at-percent` is
-set. (3) With `devshell-cache: 'true'`, cached dev shells now live in a per-repository folder
-(`devshell-scope`): each shell is evaluated once more after the upgrade. `github-slug` (default
-`'true'`), `devshell-prewarm` (default empty), `flakehub-login` (default `'true'`) and
-`store-gc-at-percent` (default empty) change nothing unless a repo sets them. macOS and GitHub-hosted
+**Upgrading from v3 to v4 (breaking changes).** Change `@v3` to `@v4`, then:
+
+1. **Delete the removed `with:` lines**: the store-GC inputs and the cache-size input (their exact names are in the v4.0.0 BREAKING CHANGES list in `Changelog.md`). A caller that relied on the store GC must run its own `nix store gc` step. The kept dev shells stay GC roots, so such a step keeps them.
+2. **`devshell-cache` is now `'true'` by default.** Callers that want plain `nix develop` set `devshell-cache: 'false'`. A repo keeping it on asserts its dev shell depends only on `flake.nix`, `flake.lock` and `nix/**` (plus `DURIAN_SHELL_PATHS`). `checkout` and `github-slug` already defaulted to `'true'`; their `with:` lines can go too when they say `'true'`.
+3. **`DURIAN_SHELL_KEEP` defaults to 64** (was 100). Set the variable to keep a different number.
+4. **Renamed variables** (only matters if a workflow or script set or read them): `DURIAN_NIX_STATE_DIR`, `DURIAN_NIX_ETC_DIR`, `DURIAN_NIX_BIN_DIR` (the warm-bootstrap test overrides) and `DURIAN_NIX_IMAGE_ATTACHED` (exported by the macOS attach step) replace their old `ATOMI`-prefixed names; the old names are not read.
+5. **`atomi-develop` is gone.** Call `durian-shell` and set `DURIAN_SHELL_*`.
+6. **Warm bootstrap folder renamed** (`/nix/durian-bootstrap` replaces the old `atomi`-named folder): the first job on each cache volume after the upgrade runs the Determinate installer once and writes the new folder.
+7. **Size warnings read the real volume size** (the filesystem mounted at `/nix`), so no size input is needed. `store-guard` and `idle-commit-notice-minutes` are unchanged.
+
+On Namespace Linux runners the earlier v3 changes still apply: the Determinate installer is not run when the persisted `/nix` is valid (`warm-bootstrap`, default `'true'`; opt out with `'false'`), and `store-guard` (default `'true'`) warns at 85% and over the volume size and adds an end-of-job notice for jobs that changed nothing; it never fails a job and never deletes anything. Cached dev shells live in a per-repository folder (`devshell-scope`). macOS and GitHub-hosted runners are unaffected by the Linux-only parts.
 runners are unaffected.
 
 ### Warm Nix bootstrap (automatic, `warm-bootstrap: 'true'`)
@@ -198,7 +195,7 @@ _outside_ `/nix` is gone. Re-running the installer to recreate it costs ~6 s. In
 
 1. The **first** job (no snapshot yet) runs the installer as before and then snapshots what the
    installer wrote outside `/nix` (`/usr/local/bin/determinate-nixd`, `/etc/nix/nix.conf`) into
-   `/nix/atomi-bootstrap` on the volume.
+   `/nix/durian-bootstrap` on the volume.
 2. Later jobs verify the persisted store (snapshot present and younger than
    `warm-max-age-days`, `nix` runs, store db passes `PRAGMA quick_check`, nothing pre-installed in
    the image), then recreate the build users, `/etc/nix/nix.conf` + `nix.custom.conf` (same computed
@@ -234,9 +231,7 @@ release/tagging jobs.
 The action puts `durian-shell` on `PATH`:
 
 ```yaml
-- uses: AtomiCloud/actions.setup-nix@v3
-  with:
-    devshell-cache: 'true' # asserts the dev shell depends only on flake.nix, flake.lock, nix/** (see below)
+- uses: AtomiCloud/actions.setup-nix@v4
 - run: durian-shell .#ci -c ./scripts/ci/test.sh unit
 ```
 
@@ -246,11 +241,11 @@ and looks up `nixpkgs#bashInteractive` through the registry. `durian-shell` runs
 `/nix/durian-shell` on the cache volume; on a hit it sources it directly: same environment, same
 `shellHook`, no evaluation (`NIX_GCROOT` included; verified byte-for-byte against `nix develop -c env`).
 
-- **Opt-in contract (`devshell-cache: 'true'`, off by default):** the input exports
-  `DURIAN_SHELL_CACHE=1`, only on Namespace Linux (persisted `/nix`). By setting it a repo **asserts
+- **Contract (`devshell-cache`, ON by default since v4; set `'false'` to turn it off):** the input exports
+  `DURIAN_SHELL_CACHE=1`, only on Namespace Linux (persisted `/nix`) and Namespace macOS with the store image attached. Leaving it at its default (omitting it) means a repo **asserts
   that its dev shell depends only on `flake.nix`, `flake.lock`, `nix/**` and anything listed in
-  `DURIAN_SHELL_PATHS`**, the same contract as any `hashFiles(...)` cache key. Without it (and on every
-  other runner, and for anything the wrapper does not fully understand) it runs plain `nix develop "$@"`.
+  `DURIAN_SHELL_PATHS`**, the same contract as any `hashFiles(...)` cache key. Otherwise (on every
+  other runner, with `devshell-cache: 'false'`, and for anything the wrapper does not fully understand) it runs plain `nix develop "$@"`.
 - **Key:** nix version, architecture, effective `system`/`extra-platforms`/`NIX_CONFIG`/`NIX_PATH`, the
   installable, the flake directory, the caller's cwd and, for `flake.nix`, `flake.lock`, `nix/**` and
   `DURIAN_SHELL_PATHS` (which extends, never replaces, those): file contents (symlinks followed) plus
@@ -261,7 +256,7 @@ and looks up `nixpkgs#bashInteractive` through the registry. `durian-shell` runs
   flakes are handled). If the envs differ (`self`, `src = ./.`, `self.shortRev`, a `readFile` of an
   undeclared file ...) the env is never cached (a `.nocache` marker skips the attempt next time).
   This catches accidental violations of the contract but cannot prove independence (e.g. arithmetic on
-  `self.revCount` that happens to agree for the probe), which is why the repo opts in explicitly and
+  `self.revCount` that happens to agree for the probe), which is why the contract is explicit (set `devshell-cache: 'false'` to opt out) and
   `DURIAN_SHELL_VERIFY=1` exists. `__structuredAttrs` envs, non-git flakes and anything the key
   cannot hash are never cached either. A cached env whose store paths are no longer in the store is a
   miss.
@@ -276,19 +271,7 @@ and looks up `nixpkgs#bashInteractive` through the registry. `durian-shell` runs
 
 #### Renamed from `atomi-develop` (v3.7.0)
 
-| v3.7.0 | now |
-| --- | --- |
-| `atomi-develop` | `durian-shell` |
-| `ATOMI_DEVENV_CACHE` / `_DIR` / `_PATHS` / `_VERIFY` / `_KEEP` | `DURIAN_SHELL_CACHE` / `_DIR` / `_PATHS` / `_VERIFY` / `_KEEP` |
-| cache dir `/nix/atomi-devenv` | `/nix/durian-shell` |
-| log prefix `[atomi-develop]` | `[durian-shell]` |
-
-`atomi-develop` still works: it is a deprecated shim that copies every set `ATOMI_DEVENV_*` variable to
-its `DURIAN_SHELL_*` name (an explicitly set old name wins), prints one deprecation line on stderr and
-execs `durian-shell`. Commands run through it also see those `DURIAN_SHELL_*` copies. It will be
-removed in v4. The old `/nix/atomi-devenv` directory is not read or migrated: after the upgrade each
-shell is evaluated once more and stored under `/nix/durian-shell`; the old directory stays on the volume
-until the volume is reset.
+`durian-shell` is the only name (v3.8.0 renamed it; the deprecated `atomi-develop` shim and its old-prefix variables were removed in v4). Set `DURIAN_SHELL_CACHE` / `_DIR` / `_PATHS` / `_VERIFY` / `_KEEP`; the log prefix is `[durian-shell]` and the cache folder `/nix/durian-shell`. A leftover `/nix/atomi-devenv` directory is never read; it stays on the volume until the volume is reset.
 
 ### `devshell-prewarm`: keep every shell cached across parallel jobs
 
@@ -299,7 +282,7 @@ re-evaluated. List every shell the workflow uses, written exactly as the jobs pa
 `durian-shell`:
 
 ```yaml
-- uses: AtomiCloud/actions.setup-nix@v3
+- uses: AtomiCloud/actions.setup-nix@v4
   with:
     devshell-cache: 'true'
     devshell-prewarm: '.#ci .#cd'
@@ -310,8 +293,8 @@ Every job then runs `durian-shell --warm .#ci .#cd` right after setup: a cached 
 check (~0.2 s), a missing one is evaluated and stored (its closure is realised too), so whichever
 job's volume wins holds all listed shells. Nothing runs inside the shells, a shell that cannot be
 cached is skipped, and the step never fails the job. The pass keeps at least one cached env per
-listed shell, raising `DURIAN_SHELL_KEEP` (default 100) for itself when the list is longer. Without
-`devshell-cache` (and off Namespace Linux) the step does not run.
+listed shell, raising `DURIAN_SHELL_KEEP` (default 64) for itself when the list is longer. With
+`devshell-cache: 'false'` (and off Namespace Linux) the step does not run.
 
 ### `flakehub-login: 'false'`
 
@@ -323,7 +306,7 @@ the warm-bootstrap path. The installer action has no such switch and still logs 
 has OIDC (GitHub injects the token variables into every JavaScript action step, so they cannot be
 blanked from here): the real fix is to grant `id-token: write` only to jobs that use it.
 
-### Sharing one cache tag safely: `devshell-scope`, `store-guard`, store GC
+### Sharing one cache tag safely: `devshell-scope`, `store-guard`
 
 Every job (in any repository) that carries the same `nscloud-cache-tag-*` label shares one volume,
 and Namespace commits each successful job's copy of it, last write wins. Only `runs-on` labels can
@@ -331,25 +314,24 @@ stop a job from committing (`nscloud-cache-exp-do-not-commit`, `nscloud-cache-al
 an action cannot. What the action does to keep a shared tag usable:
 
 - **`devshell-scope` (default: the repository).** `durian-shell` keeps each repository's envs in its own
-  folder (`/nix/durian-shell/<owner>-<repo>-<hash>/`, the hash keeps scopes that slug alike apart) and its keep-newest limit (`DURIAN_SHELL_KEEP`, default 100; `0` or `off` never prunes)
-  counts per folder. An env file is about 80 KB, so 100 of them are about 8 MB per repository; without
-  a store GC that is the only disk KEEP affects (pruning an env never frees store paths by itself). Before, one flat folder held every repository's envs, so with more than 8 shells
+  folder (`/nix/durian-shell/<owner>-<repo>-<hash>/`, the hash keeps scopes that slug alike apart) and its keep-newest limit (`DURIAN_SHELL_KEEP`, default 64; `0` or `off` never prunes)
+  counts per folder. An env file is about 80 KB, so 64 of them are about 5 MB per repository (pruning an
+  env never frees store paths by itself). Before, one flat folder held every repository's envs, so with more than 8 shells
   on a tag each repository's miss pruned another repository's envs. Set `devshell-scope: ''` for the
   old flat folder.
 - **Kept envs are GC roots.** Each stored env registers two indirect GC roots next to it
   (`<key>.root` -> its `NIX_GCROOT`, `<key>.bash.root` -> the bash it runs with); pruning an env
-  removes them. A store GC therefore keeps everything a kept env needs (its whole closure) and frees
-  the rest. The roots only matter when a GC runs: then every kept env pins its closure, so with
-  `store-gc-at-percent` on, envs from old `flake.lock`s stay pinned until KEEP prunes them (envs of
-  one lock share almost all paths: 10 bun-base envs pinned 4.7 GiB in total). Envs stored before v3.9.0 get their roots on their next hit.
-- **`store-gc-at-percent` (opt-in).** At job start, when `/nix` uses at least this percent of
-  `cache-size-gb`, run `nix store gc` down to `store-gc-target-percent` (default 60). Nothing on
-  this volume ever shrinks `/nix` otherwise.
-- **Size warnings (`store-guard`).** At 85% of `cache-size-gb` a warning, and over it an error
+  removes them. The action never runs a store GC (v4 removed it), but if a caller runs `nix store gc`
+  on the volume, every kept env pins its closure: a GC keeps everything a kept env needs and frees the
+  rest. Envs from old `flake.lock`s stay pinned until KEEP prunes them (envs of one lock share almost all
+  paths). **Nothing on this volume shrinks `/nix` by itself**: a caller that needs space back runs its
+  own `nix store gc` step.
+- **Size warnings (`store-guard`).** At 85% of the volume a warning, and over it an error
   annotation (the job still passes): Namespace still commits an over-size generation but will not
   clone it, so the next job on the tag starts from an EMPTY volume (full install and store download).
-  `cache-size-gb` must match the job's `nscloud-cache-size-<n>gb` label (default 20); the action
-  cannot read labels.
+  The size is read from the machine: the filesystem mounted at `/nix` (the cache volume), so it follows
+  the job's `nscloud-cache-size-<n>gb` label and there is no input to keep in step. When `/nix` is not a
+  volume of its own (GitHub-hosted, self-hosted), the size is unknown and the warning is skipped.
 - **Idle-commit notice.** At the end of a successful job that changed nothing in `/nix` (no store path
   added or removed, no dev shell stored), a notice says its older copy will still be committed over
   what other jobs wrote meanwhile and names `nscloud-cache-exp-do-not-commit`. Use
@@ -358,9 +340,7 @@ an action cannot. What the action does to keep a shared tag usable:
   do-not-commit label.
 
 ```yaml
-- uses: AtomiCloud/actions.setup-nix@v3
+- uses: AtomiCloud/actions.setup-nix@v4
   with:
-    devshell-cache: 'true'
-    cache-size-gb: '20' # same as nscloud-cache-size-20gb (or the default)
-    store-gc-at-percent: '80' # opt in: GC at 16 GB, down to 12 GB
+    idle-commit-notice-minutes: '10' # only flag jobs that ran 10 minutes or more
 ```

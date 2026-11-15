@@ -13,7 +13,7 @@
 #              caller falls back to the real installer.
 #   flakehub-login  The FlakeHub login step of `bootstrap` on its own (tests).
 #   capture    Run once after a real install: snapshot the installer's out-of-/nix
-#              files into /nix/atomi-bootstrap (on the cache volume) for `bootstrap`.
+#              files into /nix/durian-bootstrap (on the cache volume) for `bootstrap`.
 #   apply      Internal. The state-changing steps, run as a child process so `set -e`
 #              really applies to every command (bash ignores errexit inside any
 #              function called from an if/&&/|| context).
@@ -25,16 +25,16 @@
 #   FLAKEHUB_LOGIN      'false' skips the FlakeHub login (default 'true')
 #   GITHUB_TOKEN_VALUE  optional; becomes `access-tokens = <server host>=...` like the
 #                       installer action does
-#   ATOMI_NIX_STATE_DIR / ATOMI_NIX_ETC_DIR / ATOMI_NIX_BIN_DIR override locations (tests)
+#   DURIAN_NIX_STATE_DIR / DURIAN_NIX_ETC_DIR / DURIAN_NIX_BIN_DIR override locations (tests)
 set -euo pipefail
 
-STATE_DIR="${ATOMI_NIX_STATE_DIR:-/nix/atomi-bootstrap}"
-ETC_DIR="${ATOMI_NIX_ETC_DIR:-/etc}"
-BIN_DIR="${ATOMI_NIX_BIN_DIR:-/usr/local/bin}"
+STATE_DIR="${DURIAN_NIX_STATE_DIR:-/nix/durian-bootstrap}"
+ETC_DIR="${DURIAN_NIX_ETC_DIR:-/etc}"
+BIN_DIR="${DURIAN_NIX_BIN_DIR:-/usr/local/bin}"
 PROFILE="/nix/var/nix/profiles/default"
 SOCKET="/nix/var/nix/daemon-socket/socket"
 DETSYS_DIR="/nix/var/determinate"
-DAEMON_LOG="${RUNNER_TEMP:-/tmp}/atomi-nix-daemon.log"
+DAEMON_LOG="${RUNNER_TEMP:-/tmp}/durian-nix-daemon.log"
 MAX_AGE_DAYS="${MAX_AGE_DAYS:-7}"
 # a typo, 1.5 or 08 must never make the eligibility predicate fail or be read as octal
 case "$MAX_AGE_DAYS" in '' | *[!0-9]* | ??????*) MAX_AGE_DAYS=7 ;; esac

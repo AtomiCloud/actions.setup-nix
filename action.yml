@@ -29,8 +29,8 @@ inputs:
     default: '7'
     description: 'Namespace Linux only. A persisted Nix install older than this many days is refreshed by the installer instead of being re-used, so the Determinate Nix version still follows the installer'
   devshell-cache:
-    default: 'false'
-    description: "Namespace Linux, and Namespace macOS when the store image is attached. Opt in to durian-shell's dev-shell cache. A repo that sets 'true' asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN_SHELL_PATHS): not on `self`/git metadata, nor on other files. Off by default: durian-shell is then plain `nix develop`."
+    default: 'true'
+    description: "Namespace Linux, and Namespace macOS when the store image is attached. On by default: durian-shell's dev-shell cache. A repo keeping it on asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN_SHELL_PATHS): not on `self`/git metadata, nor on other files. Set 'false' to make durian-shell plain `nix develop`."
   devshell-prewarm:
     default: ''
     description: "With devshell-cache only. Space-separated installables (e.g. '.#ci .#cd'), written exactly as the jobs pass them to durian-shell. Every job makes sure ALL of them are cached (a miss is evaluated and stored), so a shell used by few jobs is not lost when parallel jobs write the cache volume back last-writer-wins. Empty: each job caches only the shell it runs."
@@ -39,16 +39,7 @@ inputs:
     description: "With devshell-cache only. Which subfolder of the dev-shell cache this job's shells live in (lowercased, other characters become '-', plus a short hash of the exact value). Default: the repository, so repos sharing one cache tag never prune each other's shells (the keep-newest limit counts per scope). Empty: one shared folder, as in v3.8.0."
   store-guard:
     default: 'true'
-    description: "Namespace Linux only. Size warnings for the /nix cache volume (at 85% and over the size, where Namespace starts the next job on the tag from an EMPTY volume), the optional store GC below, and an end-of-job notice when the job changed nothing in /nix but will still commit its copy. Never fails the job. 'false' turns all of it off; 'always' also runs it on other Linux runners (self-hosted with a persistent /nix, tests)."
-  cache-size-gb:
-    default: '20'
-    description: "Namespace Linux only. The cache volume size in GB that the job's nscloud-cache-size-NNgb label sets (Namespace default 20). The action cannot read runs-on labels: keep the two in step."
-  store-gc-at-percent:
-    default: ''
-    description: "Namespace Linux only, with store-guard. At job start, run a Nix store GC when /nix uses at least this percent of cache-size-gb (e.g. '80'). Every dev shell durian-shell keeps is a GC root, so only paths no kept shell or Nix profile needs are freed. Empty: never."
-  store-gc-target-percent:
-    default: '60'
-    description: 'With store-gc-at-percent. Free down to this percent of cache-size-gb (it stops earlier if everything left is still needed).'
+    description: "Namespace Linux only. Size warnings for the /nix cache volume (at 85% and over the size, where Namespace starts the next job on the tag from an EMPTY volume; the size is read from the mounted volume, so it follows the nscloud-cache-size-NNgb label), and an end-of-job notice when the job changed nothing in /nix but will still commit its copy. Never fails the job and never deletes anything. 'false' turns all of it off; 'always' also runs it on other Linux runners (self-hosted with a persistent /nix, tests)."
   idle-commit-notice-minutes:
     default: '0'
     description: "With store-guard. End-of-job notice when the job changed nothing in /nix (no store path, no dev shell) and ran at least this many minutes: Namespace still commits its older copy over what other jobs on the tag wrote, so such jobs may want the nscloud-cache-exp-do-not-commit label. '0': always; 'off': never."
@@ -256,7 +247,7 @@ runs:
         fi
 
         {
-          echo "config<<__ATOMI_NIXCONF__"
+          echo "config<<__DURIAN_NIXCONF__"
           echo "fallback = true"
           echo "substituters = $subs"
           echo "trusted-public-keys = $keys"
@@ -268,7 +259,7 @@ runs:
           # eval time. Determinate Nix runs on every path now, so this is safe
           # unconditionally.
           echo "lazy-trees = true"
-          echo "__ATOMI_NIXCONF__"
+          echo "__DURIAN_NIXCONF__"
         } >> "$GITHUB_OUTPUT"
 
     # NAMESPACE LAB VERSION (Linux): persist the nix store directly on the cache volume.
@@ -378,7 +369,7 @@ runs:
         echo "attached=$attached" >> "$GITHUB_OUTPUT"
         # The post hook must distinguish image-backed /nix from the installer's own
         # APFS volume (both are mounts) — tell it explicitly.
-        echo "ATOMI_NIX_IMAGE_ATTACHED=$attached" >> "$GITHUB_ENV"
+        echo "DURIAN_NIX_IMAGE_ATTACHED=$attached" >> "$GITHUB_ENV"
 
     # INSTALL NIX — the Determinate installer runs on every path (it is the only
     # installer that supports lazy-trees), fed by the single computed config above.
@@ -512,11 +503,11 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        ln -sfn "$GITHUB_ACTION_PATH/post-cache-push" "$GITHUB_WORKSPACE/.atomi-nix-cache-push"
+        ln -sfn "$GITHUB_ACTION_PATH/post-cache-push" "$GITHUB_WORKSPACE/.durian-nix-cache-push"
 
     - name: Register cache push hook (Namespace macOS)
       if: inputs.namespacelabs == 'true' && runner.os == 'macOS'
-      uses: ./.atomi-nix-cache-push
+      uses: ./.durian-nix-cache-push
       with:
         cache-path: ${{ inputs.darwin-cache-path }}
 
@@ -538,37 +529,31 @@ runs:
         attic login "${{ inputs.attic-user }}" "${{ inputs.attic-push-url }}" "${{ inputs.attic-token }}"
 
     # A shared cache tag is one volume for every job and repo that carries it: warn before it
-    # outgrows its size (then Namespace starts the next job on an EMPTY volume), optionally GC
-    # what no kept dev shell needs, and remember the store's state for the end-of-job notice.
+    # outgrows its size (then Namespace starts the next job on an EMPTY volume; the size is read
+    # from the mounted volume) and remember the store state for the end-of-job notice.
     - name: Store guard (Namespace Linux)
       if: runner.os == 'Linux' && (inputs.store-guard == 'always' || (inputs.store-guard == 'true' && inputs.namespacelabs == 'true'))
       shell: bash
-      env:
-        CACHE_SIZE_GB: ${{ inputs.cache-size-gb }}
-        STORE_GC_AT_PERCENT: ${{ inputs.store-gc-at-percent }}
-        STORE_GC_TARGET_PERCENT: ${{ inputs.store-gc-target-percent }}
       run: '"$GITHUB_ACTION_PATH/scripts/store-guard.sh" start'
 
     # End-of-job half of the store guard: a JS sub-action whose `post:` runs the script above
     # at end of job (composite actions cannot declare `post:`). Referenced as a REMOTE action
     # pinned to a commit, so it lives in the runner's _actions dir: a later actions/checkout
     # (e.g. setup-docker's) cleans the workspace, and v3.9.0's hook, linked into the workspace,
-    # was gone by post time and failed the job. Pinned to the v3.9.0 commit (immutable; a
+    # was gone by post time and failed the job. Pinned to the commit that made the hook take no size input (immutable; a
     # moving tag may point at a release without store-guard/). The hook only runs the script
     # path it is given and turns every error into a warning; bump the pin only if
     # store-guard/ itself changes.
     - name: Register store guard hook (Namespace Linux)
       if: runner.os == 'Linux' && (inputs.store-guard == 'always' || (inputs.store-guard == 'true' && inputs.namespacelabs == 'true'))
-      uses: AtomiCloud/actions.setup-nix/store-guard@24a8abfcbb485b243e45fff529b6330b7a9d9f0c # v3.9.0
+      uses: AtomiCloud/actions.setup-nix/store-guard@11719dd7422357488272a5e2c5ac80eba82de832 # v4 hook
       with:
         script: ${{ github.action_path }}/scripts/store-guard.sh
-        cache-size-gb: ${{ inputs.cache-size-gb }}
         idle-commit-notice-minutes: ${{ inputs.idle-commit-notice-minutes }}
 
     # `durian-shell <flake>#<shell> -c <cmd...>`: `nix develop -c` with the evaluated dev
     # env cached on the persisted /nix volume (Namespace Linux); a plain `nix develop`
-    # everywhere else. See bin/durian-shell. bin/atomi-develop is the deprecated v3.7.0 name
-    # (a shim that maps ATOMI_DEVENV_* to DURIAN_SHELL_* and execs durian-shell).
+    # everywhere else. See bin/durian-shell.
     - name: Add durian-shell to PATH
       shell: bash
       env:
