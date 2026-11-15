@@ -540,13 +540,13 @@ runs:
     # at end of job (composite actions cannot declare `post:`). Referenced as a REMOTE action
     # pinned to a commit, so it lives in the runner's _actions dir: a later actions/checkout
     # (e.g. setup-docker's) cleans the workspace, and v3.9.0's hook, linked into the workspace,
-    # was gone by post time and failed the job. Pinned to the v3.9.0 commit (immutable; a
+    # was gone by post time and failed the job. Pinned to the commit that made the hook take no size input (immutable; a
     # moving tag may point at a release without store-guard/). The hook only runs the script
     # path it is given and turns every error into a warning; bump the pin only if
     # store-guard/ itself changes.
     - name: Register store guard hook (Namespace Linux)
       if: runner.os == 'Linux' && (inputs.store-guard == 'always' || (inputs.store-guard == 'true' && inputs.namespacelabs == 'true'))
-      uses: AtomiCloud/actions.setup-nix/store-guard@24a8abfcbb485b243e45fff529b6330b7a9d9f0c # v3.9.0
+      uses: AtomiCloud/actions.setup-nix/store-guard@f171ce20e5dfcc13c70722810a7cae219a8dc738 # v4 hook
       with:
         script: ${{ github.action_path }}/scripts/store-guard.sh
         idle-commit-notice-minutes: ${{ inputs.idle-commit-notice-minutes }}
