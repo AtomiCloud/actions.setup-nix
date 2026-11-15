@@ -232,8 +232,6 @@ The action puts `durian-shell` on `PATH`:
 
 ```yaml
 - uses: AtomiCloud/actions.setup-nix@v4
-  with:
-    devshell-cache: 'true' # asserts the dev shell depends only on flake.nix, flake.lock, nix/** (see below)
 - run: durian-shell .#ci -c ./scripts/ci/test.sh unit
 ```
 
@@ -243,11 +241,11 @@ and looks up `nixpkgs#bashInteractive` through the registry. `durian-shell` runs
 `/nix/durian-shell` on the cache volume; on a hit it sources it directly: same environment, same
 `shellHook`, no evaluation (`NIX_GCROOT` included; verified byte-for-byte against `nix develop -c env`).
 
-- **Opt-in contract (`devshell-cache: 'true'`, off by default):** the input exports
-  `DURIAN_SHELL_CACHE=1`, only on Namespace Linux (persisted `/nix`). By setting it a repo **asserts
+- **Contract (`devshell-cache`, ON by default since v4; set `'false'` to turn it off):** the input exports
+  `DURIAN_SHELL_CACHE=1`, only on Namespace Linux (persisted `/nix`) and Namespace macOS with the store image attached. Leaving it at its default (omitting it) means a repo **asserts
   that its dev shell depends only on `flake.nix`, `flake.lock`, `nix/**` and anything listed in
-  `DURIAN_SHELL_PATHS`**, the same contract as any `hashFiles(...)` cache key. Without it (and on every
-  other runner, and for anything the wrapper does not fully understand) it runs plain `nix develop "$@"`.
+  `DURIAN_SHELL_PATHS`**, the same contract as any `hashFiles(...)` cache key. Otherwise (on every
+  other runner, with `devshell-cache: 'false'`, and for anything the wrapper does not fully understand) it runs plain `nix develop "$@"`.
 - **Key:** nix version, architecture, effective `system`/`extra-platforms`/`NIX_CONFIG`/`NIX_PATH`, the
   installable, the flake directory, the caller's cwd and, for `flake.nix`, `flake.lock`, `nix/**` and
   `DURIAN_SHELL_PATHS` (which extends, never replaces, those): file contents (symlinks followed) plus
@@ -258,7 +256,7 @@ and looks up `nixpkgs#bashInteractive` through the registry. `durian-shell` runs
   flakes are handled). If the envs differ (`self`, `src = ./.`, `self.shortRev`, a `readFile` of an
   undeclared file ...) the env is never cached (a `.nocache` marker skips the attempt next time).
   This catches accidental violations of the contract but cannot prove independence (e.g. arithmetic on
-  `self.revCount` that happens to agree for the probe), which is why the repo opts in explicitly and
+  `self.revCount` that happens to agree for the probe), which is why the contract is explicit (set `devshell-cache: 'false'` to opt out) and
   `DURIAN_SHELL_VERIFY=1` exists. `__structuredAttrs` envs, non-git flakes and anything the key
   cannot hash are never cached either. A cached env whose store paths are no longer in the store is a
   miss.
@@ -295,8 +293,8 @@ Every job then runs `durian-shell --warm .#ci .#cd` right after setup: a cached 
 check (~0.2 s), a missing one is evaluated and stored (its closure is realised too), so whichever
 job's volume wins holds all listed shells. Nothing runs inside the shells, a shell that cannot be
 cached is skipped, and the step never fails the job. The pass keeps at least one cached env per
-listed shell, raising `DURIAN_SHELL_KEEP` (default 64) for itself when the list is longer. Without
-`devshell-cache` (and off Namespace Linux) the step does not run.
+listed shell, raising `DURIAN_SHELL_KEEP` (default 64) for itself when the list is longer. With
+`devshell-cache: 'false'` (and off Namespace Linux) the step does not run.
 
 ### `flakehub-login: 'false'`
 
