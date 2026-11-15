@@ -1,3 +1,35 @@
+## [4.0.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.11.0...v4.0.0) (2026-11-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **breaking:** list in its footer, so the releaser cuts **4.0.0**,
+writes the list into `Changelog.md` and moves `v4`.
+- README: one line saying `v3.11.0` holds the v4 changes by mistake (use
+`@v4`, or pin `@v3.10.0`).
+- No code change.
+
+Moving the `v3` tag back to v3.10.0 is a separate step that waits for
+the owner.
+
+https://claude.ai/code/session_012quaZ4kJLKBhnSHRN44nm8
+
+<!-- codesmith:footer -->
+* **breaking:** the store GC is removed: inputs store-gc-at-percent and
+store-gc-target-percent are gone; run your own nix store gc step.
+The cache-size-gb input is gone; size warnings read the real volume size.
+devshell-cache defaults to 'true' (was 'false').
+DURIAN_SHELL_KEEP defaults to 64 (was 100).
+ATOMI_NIX_STATE_DIR, ATOMI_NIX_ETC_DIR, ATOMI_NIX_BIN_DIR and
+ATOMI_NIX_IMAGE_ATTACHED are renamed DURIAN_NIX_*.
+The bin/atomi-develop shim (ATOMI_DEVENV_*) is removed.
+The warm bootstrap folder is /nix/durian-bootstrap (was atomi-bootstrap).
+
+### ✨ Features ✨
+
+* **breaking:** release the v4 changes as 4.0.0 ([#35](https://github.com/AtomiCloud/actions.setup-nix/issues/35)) ([e70bd69](https://github.com/AtomiCloud/actions.setup-nix/commit/e70bd6910337a6cfeda6c9592320cd6fcb885d87)), closes [#34](https://github.com/AtomiCloud/actions.setup-nix/issues/34) [#34](https://github.com/AtomiCloud/actions.setup-nix/issues/34)
+* **breaking:** release the v4 changes as 4.0.0 ([290087b](https://github.com/AtomiCloud/actions.setup-nix/commit/290087b442353bf6bb0264034c9aa90377594fd8)), closes [#34](https://github.com/AtomiCloud/actions.setup-nix/issues/34)
+
 ## [3.11.0](https://github.com/AtomiCloud/actions.setup-nix/compare/v3.10.0...v3.11.0) (2026-11-15)
 
 
