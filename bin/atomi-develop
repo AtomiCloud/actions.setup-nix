@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-# DEPRECATED since v3.8.0: renamed to durian-shell (ATOMI_DEVENV_* -> DURIAN_SHELL_*, cache dir
-# /nix/atomi-devenv -> /nix/durian-shell). Kept so v3.7.0 callers do not break; removed in v4.
-for v in CACHE DIR PATHS VERIFY KEEP REGISTRY_MAX_AGE_DAYS; do o="ATOMI_DEVENV_$v" && [ -z "${!o+x}" ] || export "DURIAN_SHELL_$v=${!o}"; done
-echo "[atomi-develop] deprecated: renamed to durian-shell (ATOMI_DEVENV_* -> DURIAN_SHELL_*); removed in v4" >&2
-exec "$(dirname "${BASH_SOURCE[0]}")/durian-shell" "$@"
