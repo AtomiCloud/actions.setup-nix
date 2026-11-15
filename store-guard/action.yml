@@ -4,9 +4,6 @@ inputs:
   script:
     description: 'Absolute path to scripts/store-guard.sh of the calling setup-nix action.'
     required: true
-  cache-size-gb:
-    description: 'Configured cache volume size in GB.'
-    required: true
   idle-commit-notice-minutes:
     description: 'Notice when the job changed nothing in /nix and ran at least this many minutes; off disables.'
     required: true
