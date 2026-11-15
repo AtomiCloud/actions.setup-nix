@@ -3,7 +3,7 @@
 #
 # One self-contained file: needs bash, nix and GNU coreutils/findutils/sed/grep plus git; it
 # reads nothing but its arguments, the environment below and the flake. (Shipped with
-# AtomiCloud/actions.setup-nix; formerly `atomi-develop`, ATOMI_DEVENV_* variables.)
+# AtomiCloud/actions.setup-nix; formerly `atomi-develop`.)
 #
 #   durian-shell .#ci -c ./scripts/ci/test.sh unit
 #
@@ -32,7 +32,7 @@
 #                        Add every other path your flake's .nix files read.
 #   DURIAN_SHELL_VERIFY  set to 1 on a hit to also evaluate fresh and fail loudly if the
 #                        two environments differ (debugging a key that misses an input)
-#   DURIAN_SHELL_KEEP    number of cached envs to keep per scope (default 100; 0 or off:
+#   DURIAN_SHELL_KEEP    number of cached envs to keep per scope (default 64; 0 or off:
 #                        never prune). An env file is ~80 KB; without a store GC, KEEP has
 #                        no other disk effect (pruning never frees store paths by itself).
 #   DURIAN_SHELL_SCOPE   optional owner of the envs, e.g. the repository (setup-nix sets
@@ -56,9 +56,9 @@ if [ "${1:-}" = "--warm" ]; then
   shift
   [ "${DURIAN_SHELL_CACHE:-0}" = "1" ] || exit 0
   # pruning must not evict a shell this pass just stored: keep at least one per listed shell
-  keep="${DURIAN_SHELL_KEEP:-100}"
+  keep="${DURIAN_SHELL_KEEP:-64}"
   case "$keep" in off | 0) keep=0 ;; esac
-  [ "$keep" -ge 0 ] 2>/dev/null || keep=100
+  [ "$keep" -ge 0 ] 2>/dev/null || keep=64
   # 0 = never prune; otherwise at least one per listed shell
   [ "$keep" -eq 0 ] || [ "$keep" -ge "$#" ] || keep="$#"
   for w in "$@"; do
@@ -467,10 +467,10 @@ chmod 0644 "$tmp"
 mv -f "$tmp" "$env_file"
 add_roots "$env_file" "$key" || log "could not register GC roots for $key (a store GC may collect it)"
 trap - EXIT
-# keep the newest N (default 100; 0 or off: never prune)
-keep="${DURIAN_SHELL_KEEP:-100}"
+# keep the newest N (default 64; 0 or off: never prune)
+keep="${DURIAN_SHELL_KEEP:-64}"
 case "$keep" in off | 0) keep=0 ;; esac
-[ "$keep" -ge 0 ] 2>/dev/null || keep=100
+[ "$keep" -ge 0 ] 2>/dev/null || keep=64
 if [ "$keep" -gt 0 ]; then
   n=0
   # the env just written is never pruned; keep the newest others up to N in total

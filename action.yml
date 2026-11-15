@@ -29,8 +29,8 @@ inputs:
     default: '7'
     description: 'Namespace Linux only. A persisted Nix install older than this many days is refreshed by the installer instead of being re-used, so the Determinate Nix version still follows the installer'
   devshell-cache:
-    default: 'false'
-    description: "Namespace Linux, and Namespace macOS when the store image is attached. Opt in to durian-shell's dev-shell cache. A repo that sets 'true' asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN_SHELL_PATHS): not on `self`/git metadata, nor on other files. Off by default: durian-shell is then plain `nix develop`."
+    default: 'true'
+    description: "Namespace Linux, and Namespace macOS when the store image is attached. On by default: durian-shell's dev-shell cache. A repo keeping it on asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN_SHELL_PATHS): not on `self`/git metadata, nor on other files. Set 'false' to make durian-shell plain `nix develop`."
   devshell-prewarm:
     default: ''
     description: "With devshell-cache only. Space-separated installables (e.g. '.#ci .#cd'), written exactly as the jobs pass them to durian-shell. Every job makes sure ALL of them are cached (a miss is evaluated and stored), so a shell used by few jobs is not lost when parallel jobs write the cache volume back last-writer-wins. Empty: each job caches only the shell it runs."
@@ -256,7 +256,7 @@ runs:
         fi
 
         {
-          echo "config<<__ATOMI_NIXCONF__"
+          echo "config<<__DURIAN_NIXCONF__"
           echo "fallback = true"
           echo "substituters = $subs"
           echo "trusted-public-keys = $keys"
@@ -268,7 +268,7 @@ runs:
           # eval time. Determinate Nix runs on every path now, so this is safe
           # unconditionally.
           echo "lazy-trees = true"
-          echo "__ATOMI_NIXCONF__"
+          echo "__DURIAN_NIXCONF__"
         } >> "$GITHUB_OUTPUT"
 
     # NAMESPACE LAB VERSION (Linux): persist the nix store directly on the cache volume.
@@ -378,7 +378,7 @@ runs:
         echo "attached=$attached" >> "$GITHUB_OUTPUT"
         # The post hook must distinguish image-backed /nix from the installer's own
         # APFS volume (both are mounts) — tell it explicitly.
-        echo "ATOMI_NIX_IMAGE_ATTACHED=$attached" >> "$GITHUB_ENV"
+        echo "DURIAN_NIX_IMAGE_ATTACHED=$attached" >> "$GITHUB_ENV"
 
     # INSTALL NIX — the Determinate installer runs on every path (it is the only
     # installer that supports lazy-trees), fed by the single computed config above.

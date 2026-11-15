@@ -25,12 +25,12 @@
 #   FLAKEHUB_LOGIN      'false' skips the FlakeHub login (default 'true')
 #   GITHUB_TOKEN_VALUE  optional; becomes `access-tokens = <server host>=...` like the
 #                       installer action does
-#   ATOMI_NIX_STATE_DIR / ATOMI_NIX_ETC_DIR / ATOMI_NIX_BIN_DIR override locations (tests)
+#   DURIAN_NIX_STATE_DIR / DURIAN_NIX_ETC_DIR / DURIAN_NIX_BIN_DIR override locations (tests)
 set -euo pipefail
 
-STATE_DIR="${ATOMI_NIX_STATE_DIR:-/nix/atomi-bootstrap}"
-ETC_DIR="${ATOMI_NIX_ETC_DIR:-/etc}"
-BIN_DIR="${ATOMI_NIX_BIN_DIR:-/usr/local/bin}"
+STATE_DIR="${DURIAN_NIX_STATE_DIR:-/nix/atomi-bootstrap}"
+ETC_DIR="${DURIAN_NIX_ETC_DIR:-/etc}"
+BIN_DIR="${DURIAN_NIX_BIN_DIR:-/usr/local/bin}"
 PROFILE="/nix/var/nix/profiles/default"
 SOCKET="/nix/var/nix/daemon-socket/socket"
 DETSYS_DIR="/nix/var/determinate"

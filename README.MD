@@ -139,7 +139,7 @@ unchanged and still require signatures.
 | `deepen` | <p>macOS: after the shallow checkout, fetch the full history of the current ref plus tags (~0.4-1.2 s). Test/build jobs that never read history can set 'false'.</p> | `false` | `true` |
 | `warm-bootstrap` | <p>Namespace Linux only. Re-create Nix from the persisted /nix cache volume without running the Determinate installer (~0.4s instead of ~6s). Any verification failure falls back to the installer. Set 'false' to always run the installer.</p> | `false` | `true` |
 | `warm-max-age-days` | <p>Namespace Linux only. A persisted Nix install older than this many days is refreshed by the installer instead of being re-used, so the Determinate Nix version still follows the installer</p> | `false` | `7` |
-| `devshell-cache` | <p>Namespace Linux, and Namespace macOS when the store image is attached. Opt in to durian-shell's dev-shell cache. A repo that sets 'true' asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN<em>SHELL</em>PATHS): not on <code>self</code>/git metadata, nor on other files. Off by default: durian-shell is then plain <code>nix develop</code>.</p> | `false` | `false` |
+| `devshell-cache` | <p>Namespace Linux, and Namespace macOS when the store image is attached. On by default: durian-shell's dev-shell cache. A repo keeping it on asserts its dev shell depends only on flake.nix, flake.lock and nix/** (plus DURIAN<em>SHELL</em>PATHS): not on <code>self</code>/git metadata, nor on other files. Set 'false' to make durian-shell plain <code>nix develop</code>.</p> | `false` | `true` |
 | `devshell-prewarm` | <p>With devshell-cache only. Space-separated installables (e.g. '.#ci .#cd'), written exactly as the jobs pass them to durian-shell. Every job makes sure ALL of them are cached (a miss is evaluated and stored), so a shell used by few jobs is not lost when parallel jobs write the cache volume back last-writer-wins. Empty: each job caches only the shell it runs.</p> | `false` | `""` |
 | `devshell-scope` | <p>With devshell-cache only. Which subfolder of the dev-shell cache this job's shells live in (lowercased, other characters become '-', plus a short hash of the exact value). Default: the repository, so repos sharing one cache tag never prune each other's shells (the keep-newest limit counts per scope). Empty: one shared folder, as in v3.8.0.</p> | `false` | `${{ github.repository }}` |
 | `store-guard` | <p>Namespace Linux only. Size warnings for the /nix cache volume (at 85% and over the size, where Namespace starts the next job on the tag from an EMPTY volume), the optional store GC below, and an end-of-job notice when the job changed nothing in /nix but will still commit its copy. Never fails the job. 'false' turns all of it off; 'always' also runs it on other Linux runners (self-hosted with a persistent /nix, tests).</p> | `false` | `true` |
@@ -283,10 +283,7 @@ and looks up `nixpkgs#bashInteractive` through the registry. `durian-shell` runs
 | cache dir `/nix/atomi-devenv` | `/nix/durian-shell` |
 | log prefix `[atomi-develop]` | `[durian-shell]` |
 
-`atomi-develop` still works: it is a deprecated shim that copies every set `ATOMI_DEVENV_*` variable to
-its `DURIAN_SHELL_*` name (an explicitly set old name wins), prints one deprecation line on stderr and
-execs `durian-shell`. Commands run through it also see those `DURIAN_SHELL_*` copies. It will be
-removed in v4. The old `/nix/atomi-devenv` directory is not read or migrated: after the upgrade each
+The `atomi-develop` shim was removed in v4 (it mapped `ATOMI_DEVENV_*` to `DURIAN_SHELL_*`): call `durian-shell` and set `DURIAN_SHELL_*`. The old `/nix/atomi-devenv` directory is not read or migrated: after the upgrade each
 shell is evaluated once more and stored under `/nix/durian-shell`; the old directory stays on the volume
 until the volume is reset.
 
@@ -310,7 +307,7 @@ Every job then runs `durian-shell --warm .#ci .#cd` right after setup: a cached 
 check (~0.2 s), a missing one is evaluated and stored (its closure is realised too), so whichever
 job's volume wins holds all listed shells. Nothing runs inside the shells, a shell that cannot be
 cached is skipped, and the step never fails the job. The pass keeps at least one cached env per
-listed shell, raising `DURIAN_SHELL_KEEP` (default 100) for itself when the list is longer. Without
+listed shell, raising `DURIAN_SHELL_KEEP` (default 64) for itself when the list is longer. Without
 `devshell-cache` (and off Namespace Linux) the step does not run.
 
 ### `flakehub-login: 'false'`
@@ -331,8 +328,8 @@ stop a job from committing (`nscloud-cache-exp-do-not-commit`, `nscloud-cache-al
 an action cannot. What the action does to keep a shared tag usable:
 
 - **`devshell-scope` (default: the repository).** `durian-shell` keeps each repository's envs in its own
-  folder (`/nix/durian-shell/<owner>-<repo>-<hash>/`, the hash keeps scopes that slug alike apart) and its keep-newest limit (`DURIAN_SHELL_KEEP`, default 100; `0` or `off` never prunes)
-  counts per folder. An env file is about 80 KB, so 100 of them are about 8 MB per repository; without
+  folder (`/nix/durian-shell/<owner>-<repo>-<hash>/`, the hash keeps scopes that slug alike apart) and its keep-newest limit (`DURIAN_SHELL_KEEP`, default 64; `0` or `off` never prunes)
+  counts per folder. An env file is about 80 KB, so 64 of them are about 5 MB per repository; without
   a store GC that is the only disk KEEP affects (pruning an env never frees store paths by itself). Before, one flat folder held every repository's envs, so with more than 8 shells
   on a tag each repository's miss pruned another repository's envs. Set `devshell-scope: ''` for the
   old flat folder.
